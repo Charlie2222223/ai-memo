@@ -73,8 +73,11 @@ class TermsController < ApplicationController
     # includes に :folder を足しているのもN+1対策。
     # フォルダ名を一覧に出すので、これが無いと単語の件数だけ
     # SELECT * FROM folders が発行される。
+    # :source_term も includes に入れる。
+    # 一覧の各行は出自の単語名を出さないが、シリアライザが
+    # source_term_word を組み立てるため、無いと件数分のSQLが飛ぶ。
     terms = current_user.terms
-                        .includes(:tags, :folder)
+                        .includes(:tags, :folder, :source_term)
                         .search(params[:q])
                         .with_tag(params[:tag])
                         .in_folder(params[:folder_id])
@@ -87,7 +90,10 @@ class TermsController < ApplicationController
   # GET /api/terms/:id — 詳細
   # ==========================================================================
   def show
-    render json: { term: TermSerializer.call(@term) }
+    # 【詳細でだけ派生語を含める】
+    #   「この解説から掘り下げた語」は詳細画面にしか出さない。
+    #   一覧で毎回引くと、単語の件数だけSQLが飛ぶ（N+1）。
+    render json: { term: TermSerializer.call(@term, include_derived: true) }
   end
 
   # ==========================================================================
@@ -272,7 +278,14 @@ class TermsController < ApplicationController
   #   コントローラで毎回チェックする方法もあるが、
   #   更新経路が増えるたびに書き忘れる。
   #   モデルに置けば、どの経路から保存しても必ず通る。
+  # 【source_term_id を許可してよい理由】
+  #   解説の中の語を選んで登録するとき、画面が「どの単語から調べたか」を
+  #   送ってくる。サーバー側からは知りようがない情報なので受け取る必要がある。
+  #
+  # 【他人の単語のIDを送られたら】
+  #   Term モデルの source_term_must_belong_to_same_user が弾く。
+  #   folder_id と全く同じ形の穴なので、対策も同じ場所に置いている。
   def term_params
-    params.expect(term: [ :word, :context, :folder_id ])
+    params.expect(term: [ :word, :context, :folder_id, :source_term_id ])
   end
 end

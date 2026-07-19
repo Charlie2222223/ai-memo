@@ -11,6 +11,7 @@ import { useRoute } from 'vue-router'
 import { api } from '../lib/api'
 import { useTermsStore } from '../stores/terms'
 import TermCard from '../components/TermCard.vue'
+import SelectionExplainer from '../components/SelectionExplainer.vue'
 
 const route = useRoute()
 const store = useTermsStore()
@@ -53,7 +54,19 @@ watch(() => route.params.id, load)
 //   ストアの中に同じIDがあれば、そちらを優先して表示する。
 const displayed = computed(() => {
   const fromStore = store.terms.find((t) => t.id === Number(route.params.id))
-  return fromStore || term.value
+  if (!fromStore) return term.value
+
+  // --------------------------------------------------------------------------
+  // 【derived_terms だけ詳細取得の側を残す理由】← ここを間違えて一度踏んだ
+  //   一覧API（/api/terms）は派生語を返さない。
+  //   単語50件それぞれについて派生語を引くとN+1になるため、
+  //   詳細API（/api/terms/:id）でしか含めていない。
+  //
+  //   ストア側を丸ごと優先すると、その空の配列で上書きされ、
+  //   「ここから調べた語」が永久に表示されない。
+  //   WebSocketの更新は反映しつつ、派生語だけは詳細取得の値を残す。
+  // --------------------------------------------------------------------------
+  return { ...fromStore, derived_terms: term.value?.derived_terms ?? [] }
 })
 </script>
 
@@ -76,5 +89,16 @@ const displayed = computed(() => {
   <p v-if="loading" class="muted">読み込み中…</p>
   <p v-else-if="error" class="error-box">{{ error }}</p>
 
-  <TermCard v-else-if="displayed" :term="displayed" detailed />
+  <template v-else-if="displayed">
+    <TermCard :term="displayed" detailed />
+
+    <!-- ======================================================================
+         解説の中の語を選んで調べる
+         ======================================================================
+         【生成が完了しているときだけ出す理由】
+           生成中・失敗のときは本文が無いので、選択する対象が存在しない。
+           それでもバーの仕組みを動かすと、
+           「生成中…」という文字列を選んで登録できてしまう。 -->
+    <SelectionExplainer v-if="displayed.status === 'completed'" :source-term="displayed" />
+  </template>
 </template>

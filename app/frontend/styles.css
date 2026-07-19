@@ -598,6 +598,80 @@ button.tag.active:hover { background: var(--accent-hover); color: var(--on-accen
 }
 
 /* ============================================================================
+   選択して解説させる（SelectionExplainer.vue）
+   ============================================================================ */
+/* 【画面下部に固定する理由】
+   スマホでは選択した瞬間にOSの標準メニュー（コピー／検索／共有）が
+   選択箇所の近くに出る。同じ場所に自前のボタンを置くと重なって押せない。
+   下部なら場所が競合せず、親指も届く。 */
+.selection-bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 90;
+
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  /* 【上向きの影】浮いていることを示す。
+     画面端に接しているので角丸は付けない（デザイン規則どおり）。 */
+  box-shadow: 0 -4px 12px rgb(0 0 0 / 0.08);
+}
+
+/* 【中身だけ幅を制限する理由】
+   バーは画面幅いっぱいに敷くが、ボタンが横に伸び切ると
+   広いモニタで押しにくい。本文と同じ幅に揃える。 */
+@media (min-width: 48rem) {
+  .selection-bar {
+    justify-content: center;
+  }
+  .selection-bar .grow { max-width: 32rem; flex: 0 1 32rem; }
+}
+
+/* 【出入りにアニメーションを付ける理由】
+   選択という「自分の操作」の結果として現れるが、
+   突然下から現れると視線が飛ぶ。
+   規則（見落とすと困る変化）にも合致する。 */
+.selection-bar-enter-active,
+.selection-bar-leave-active {
+  transition: transform var(--dur-slow), opacity var(--dur-slow);
+}
+.selection-bar-enter-from,
+.selection-bar-leave-to {
+  transform: translateY(100%);
+  opacity: 0;
+}
+
+/* 確認欄。カードの下に差し込まれる。 */
+.selection-confirm {
+  margin-top: var(--space-4);
+  padding: var(--space-4);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-3);
+  background: var(--surface);
+}
+
+/* ============================================================================
+   出自（どの単語から調べたか / ここから調べた語）
+   ============================================================================ */
+/* 【本文と分けて見せる理由】
+   これは解説の内容ではなく「関係」の情報。
+   本文と地続きだとAIの生成物の一部だと誤読される。 */
+.lineage {
+  margin-top: var(--space-4);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+  font-size: var(--text-sm);
+}
+
+.lineage-label { color: var(--muted); }
+
+/* ============================================================================
    例のリスト
    ============================================================================ */
 .examples { margin: 0; padding-left: var(--space-5); }

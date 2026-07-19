@@ -403,4 +403,78 @@ RSpec.describe "Terms", type: :request do
       end
     end
   end
+
+  # ==========================================================================
+  # 出自（解説の中の語を選んで登録したときの親子関係）
+  # ==========================================================================
+  describe "出自（source_term）" do
+    before { sign_in_as(owner) }
+
+    it "出自を指定して登録できる" do
+      post "/api/terms",
+           params: { term: { word: "プリフライト", source_term_id: own_term.id } },
+           as: :json
+
+      expect(response).to have_http_status(:created)
+      expect(owner.terms.find_by(word: "プリフライト").source_term).to eq(own_term)
+    end
+
+    it "詳細に「ここから調べた語」が含まれる" do
+      child = create(:term, user: owner, word: "プリフライト", source_term: own_term)
+
+      get "/api/terms/#{own_term.id}"
+
+      derived = json_body[:term][:derived_terms]
+      expect(derived.map { |t| t[:word] }).to eq([ child.word ])
+    end
+
+    it "子の詳細に出自の単語名が含まれる" do
+      child = create(:term, user: owner, word: "プリフライト", source_term: own_term)
+
+      get "/api/terms/#{child.id}"
+
+      expect(json_body[:term][:source_term_id]).to eq(own_term.id)
+      expect(json_body[:term][:source_term_word]).to eq(own_term.word)
+    end
+
+    it "他人の単語を出自にはできない" do
+      # ------------------------------------------------------------------
+      # 【folder_id と同じ形の穴】
+      #   通ってしまうと、他人の単語の詳細に
+      #   「ここから調べた語」として自分の単語が並ぶ。
+      #   相手の画面に自分のデータが現れることになる。
+      # ------------------------------------------------------------------
+      post "/api/terms",
+           params: { term: { word: "プリフライト", source_term_id: other_term.id } },
+           as: :json
+
+      expect(response).to have_http_status(:unprocessable_entity)
+      expect(owner.terms.find_by(word: "プリフライト")).to be_nil
+    end
+
+    it "自分自身を出自にはできない" do
+      term = create(:term, user: owner, word: "自己参照テスト")
+
+      patch "/api/terms/#{term.id}",
+            params: { term: { source_term_id: term.id } }, as: :json
+
+      expect(response).to have_http_status(:unprocessable_entity)
+      expect(term.reload.source_term_id).to be_nil
+    end
+
+    it "親を削除しても子は残り、出自だけが外れる" do
+      # ------------------------------------------------------------------
+      # 【この挙動が最重要】
+      #   1件3.4円かけて生成した解説を、
+      #   親を消しただけで失わせてはいけない。
+      # ------------------------------------------------------------------
+      child = create(:term, user: owner, word: "プリフライト", source_term: own_term)
+
+      delete "/api/terms/#{own_term.id}"
+
+      expect(response).to have_http_status(:no_content)
+      expect(Term.exists?(child.id)).to be(true)
+      expect(child.reload.source_term_id).to be_nil
+    end
+  end
 end

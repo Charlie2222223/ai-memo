@@ -237,6 +237,34 @@ async function handleDelete() {
     </div>
 
     <!-- ======================================================================
+         出自と派生（詳細画面のみ）
+         ======================================================================
+         【両方向を出す理由】
+           子だけだと、親を開いたときに何を掘り下げたか分からない。
+           親だけだと、子から読んでいた場所に戻れない。
+           片方向では半分しか使えない。 -->
+    <div v-if="detailed && (term.source_term_id || term.derived_terms?.length)" class="lineage">
+      <p v-if="term.source_term_id" style="margin: 0 0 var(--space-2)">
+        <span class="lineage-label">この語を見つけた場所: </span>
+        <RouterLink :to="`/terms/${term.source_term_id}`">{{ term.source_term_word }}</RouterLink>
+      </p>
+
+      <div v-if="term.derived_terms?.length">
+        <span class="lineage-label">ここから調べた語: </span>
+        <!-- 【区切りを入れる理由】
+             リンクが隣接すると、どこまでが1つの語か分からなくなる。
+             タグと同じく gap で間隔を取る。 -->
+        <span class="tag-list" style="display: inline-flex; vertical-align: middle">
+          <RouterLink
+            v-for="d in term.derived_terms"
+            :key="d.id"
+            :to="`/terms/${d.id}`"
+          >{{ d.word }}</RouterLink>
+        </span>
+      </div>
+    </div>
+
+    <!-- ======================================================================
          操作（詳細画面のみ）
          ====================================================================== -->
     <div v-if="detailed" class="row" style="margin-top: var(--space-6)">

@@ -63,12 +63,12 @@ export const useTermsStore = defineStore('terms', () => {
   // --------------------------------------------------------------------------
   // 単語を登録する
   // --------------------------------------------------------------------------
-  async function createTerm(word, context) {
+  async function createTerm(word, context, sourceTermId = null) {
     // 【throw し直している理由】
     //   ここでエラーを握り潰すと、画面側は成功したと思って
     //   入力欄を空にしてしまう。ユーザーは入力内容を失う。
     //   呼び出し側が判断できるよう、そのまま投げ直す。
-    const data = await api.createTerm(word, context)
+    const data = await api.createTerm(word, context, sourceTermId)
 
     // 【unshift（先頭に追加）を使う理由】
     //   一覧は新しい順なので、新規登録は先頭に来るのが自然。

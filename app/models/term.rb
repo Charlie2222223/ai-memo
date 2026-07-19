@@ -46,6 +46,36 @@ class Term < ApplicationRecord
   #   optional を書かないと、1件目の登録が検証で落ちる。
   belongs_to :folder, optional: true
 
+  # --------------------------------------------------------------------------
+  # 出自（この単語を、どの単語の解説を読んでいて調べたか）
+  # --------------------------------------------------------------------------
+  # 【自己参照の関連付け】
+  #   同じ Term テーブルの別の行を指す。
+  #   class_name を書くのは、関連名（source_term）から
+  #   Rails が SourceTerm というクラスを探しに行ってしまうため。
+  #
+  # 【optional: true が必要な理由】
+  #   自分で入力欄から登録した単語には出自が無い。
+  #   むしろそちらが多数派なので、必須にすると通常の登録が全部落ちる。
+  belongs_to :source_term, class_name: "Term", optional: true
+
+  # 【逆向き：この単語の解説から掘り下げた語たち】
+  #   foreign_key を明示するのは、Rails が既定で term_id を探すため。
+  #   実際のカラムは source_term_id なので教える必要がある。
+  #
+  # 【dependent: :nullify にする理由】
+  #   親を削除したとき、子まで消してはいけない。
+  #   1件3.4円かけて生成した解説が、親を消しただけで失われる。
+  #   子は「出自不明の単語」として残ればよい。
+  #
+  #   DB側にも on_delete: :nullify を掛けてある。
+  #   Rails を通さない削除でも守られるようにするため。防御は多層で持つ。
+  has_many :derived_terms,
+           class_name: "Term",
+           foreign_key: :source_term_id,
+           inverse_of: :source_term,
+           dependent: :nullify
+
   # AI呼び出しの記録。
   # 【dependent を付けない理由】
   #   マイグレーションで on_delete: :nullify を指定したので、
@@ -122,6 +152,34 @@ class Term < ApplicationRecord
   #   「権限チェックはif文で書くのではなく、構造的に通らなくする」
   #   という方針（current_user.terms から辿るのと同じ考え方）。
   validate :folder_must_belong_to_same_user
+
+  # --------------------------------------------------------------------------
+  # 出自の単語も自分のものか
+  # --------------------------------------------------------------------------
+  # 【folder_id と同じ穴が開く】
+  #   source_term_id は画面から送られてくる値なので、
+  #   他人の単語のIDを指定される可能性がある。
+  #
+  #   通ってしまうと、他人の単語の詳細に
+  #   「ここから調べた語」として自分の単語が並ぶ。
+  #   相手の画面に自分のデータが現れることになる。
+  #
+  #   コントローラでチェックする方法もあるが、経路が増えるたびに
+  #   書き忘れる。モデルに置けばどの経路からでも必ず通る。
+  validate :source_term_must_belong_to_same_user
+
+  # --------------------------------------------------------------------------
+  # 自分自身を出自にできない
+  # --------------------------------------------------------------------------
+  # 【なぜ起こりうるか】
+  #   詳細画面のどこを選択してもボタンが出る仕様にしたため、
+  #   表示中の単語名そのものを選んで登録しようとすることがある。
+  #   （その場合は「既に登録済み」で弾かれるが、
+  #     改名して登録すれば自分を指す関係が作れてしまう）
+  #
+  #   自己参照が入ると「ここから調べた語」に自分が並び、
+  #   親を辿ると無限に自分へ戻る表示になる。
+  validate :source_term_must_not_be_self
 
   # ==========================================================================
   # スコープ（よく使う検索条件に名前を付けたもの）
@@ -325,5 +383,24 @@ class Term < ApplicationRecord
     #   指定したIDが実在することを教えてしまう。
     #   他人のリソースに404を返すのと同じ考え方。
     errors.add(:folder, "が正しくありません")
+  end
+
+  def source_term_must_belong_to_same_user
+    return if source_term.nil?
+    return if source_term.user_id == user_id
+
+    # フォルダと同じ理由で、他人のものだと明かさない書き方にする。
+    errors.add(:source_term, "が正しくありません")
+  end
+
+  def source_term_must_not_be_self
+    # 【persisted? で囲む理由】
+    #   新規作成時は id がまだ nil。
+    #   nil == nil が成立してしまい、出自を指定していない
+    #   通常の登録まで弾かれる。
+    return if id.nil? || source_term_id.nil?
+    return if source_term_id != id
+
+    errors.add(:source_term, "に自分自身は指定できません")
   end
 end

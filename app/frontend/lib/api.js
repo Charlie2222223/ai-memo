@@ -121,7 +121,13 @@ export const api = {
     return request('GET', `/api/terms${query ? `?${query}` : ''}`)
   },
   getTerm: (id) => request('GET', `/api/terms/${id}`),
-  createTerm: (word, context) => request('POST', '/api/terms', { term: { word, context } }),
+  // 【sourceTermId が任意な理由】
+  //   通常の登録（サイドバーの入力欄）には出自が無い。
+  //   解説の中の語を選んで登録したときだけ、その親のIDが入る。
+  createTerm: (word, context, sourceTermId = null) =>
+    request('POST', '/api/terms', {
+      term: { word, context, source_term_id: sourceTermId },
+    }),
   deleteTerm: (id) => request('DELETE', `/api/terms/${id}`),
   regenerateTerm: (id) => request('POST', `/api/terms/${id}/regenerate`),
 

@@ -27,7 +27,16 @@ class TermSerializer
   # 【クラスメソッド1つだけにしている理由】
   #   状態を持たない変換処理なので、インスタンスを作る意味が無い。
   #   TermSerializer.call(term) と書けば、それ以上の説明が要らない。
-  def self.call(term)
+  #
+  # @param include_derived [Boolean]
+  #   「この解説から掘り下げた語」の一覧を含めるか。
+  #
+  #   【既定を false にしている理由】← N+1対策
+  #     一覧APIで毎回含めると、単語50件それぞれについて
+  #     派生語を引くSQLが飛ぶ。
+  #     一方この情報が要るのは詳細画面だけなので、
+  #     必要な場所から明示的に頼む形にする。
+  def self.call(term, include_derived: false)
     {
       id: term.id,
       word: term.word,
@@ -67,7 +76,26 @@ class TermSerializer
       #   ブラウザや言語によって解釈が変わって事故になる。
       created_at: term.created_at.iso8601,
 
-      tags: term.tags.map { |tag| { id: tag.id, name: tag.name } }
+      tags: term.tags.map { |tag| { id: tag.id, name: tag.name } },
+
+      # ----------------------------------------------------------------------
+      # 出自（どの単語の解説を読んでいて調べたか）
+      # ----------------------------------------------------------------------
+      # 【id と word の両方を返す理由】
+      #   word だけだと画面がリンク先を作れない。
+      #   id だけだと「CORS から調べた」と表示するために
+      #   もう1回APIを叩くことになる。
+      source_term_id: term.source_term_id,
+      source_term_word: term.source_term&.word,
+
+      # ----------------------------------------------------------------------
+      # この解説から掘り下げた語（詳細画面でのみ）
+      # ----------------------------------------------------------------------
+      # 【include_derived が false のとき空配列を返す理由】
+      #   キー自体を消すと、画面側が「まだ読み込んでいない」のか
+      #   「1件も無い」のかを区別できず、undefined チェックが増える。
+      #   常に配列であることを保証すれば、画面は length を見るだけで済む。
+      derived_terms: include_derived ? term.derived_terms.recent.map { |t| { id: t.id, word: t.word } } : []
     }
   end
 end
