@@ -37,7 +37,6 @@ const showContext = ref(false)
 
 onMounted(() => {
   store.fetchTerms()
-  store.fetchTags()
 })
 
 // ----------------------------------------------------------------------------
@@ -51,7 +50,7 @@ onMounted(() => {
 //   入力が止まって300ミリ秒経ってから1回だけ呼ぶようにする。
 //   これをデバウンスと呼び、検索欄では定番の手法。
 let timer = null
-watch([() => store.query, () => store.selectedTag], () => {
+watch(() => store.query, () => {
   clearTimeout(timer)
   timer = setTimeout(() => store.fetchTerms(), 300)
 })
@@ -68,18 +67,11 @@ async function handleCreate() {
     newWord.value = ''
     newContext.value = ''
     showContext.value = false
-    // タグはAIが後から付けるので、少し待ってから取り直す。
-    setTimeout(() => store.fetchTags(), 3000)
   } catch (e) {
     formError.value = e.message
   } finally {
     submitting.value = false
   }
-}
-
-function selectTag(name) {
-  // 同じタグをもう一度押したら解除する（トグル）。
-  store.selectedTag = store.selectedTag === name ? '' : name
 }
 
 async function handleLogout() {
@@ -133,32 +125,24 @@ async function handleLogout() {
   </div>
 
   <!-- ======================================================================
-       検索とタグ絞り込み
-       ====================================================================== -->
-  <div class="stack">
-    <input
-      v-model="store.query"
-      placeholder="検索"
-      type="search"
-      aria-label="単語・意味・文脈から検索"
-    />
+       検索
+       ======================================================================
+       【タグの絞り込み帯を置いていない理由】
+         かつてここに「すべて / API設計2 / Git1 / …」という帯があった。
+         しかしタグは1単語あたり3個ほど付くため、単語が30件になると
+         ユニークなタグは40〜50個に膨らむ。
+         帯が何行にもわたって一覧を下へ押し下げ、
+         ナビゲーションとして機能しなくなる。
 
-    <div v-if="store.tags.length" class="tag-list">
-      <button
-        class="tag"
-        :class="{ active: store.selectedTag === '' }"
-        @click="store.selectedTag = ''"
-      >すべて</button>
-
-      <button
-        v-for="tag in store.tags"
-        :key="tag.id"
-        class="tag"
-        :class="{ active: store.selectedTag === tag.name }"
-        @click="selectTag(tag.name)"
-      >{{ tag.name }} {{ tag.terms_count }}</button>
-    </div>
-  </div>
+         「絞り込む」用途はフォルダ（1単語1つ・少数で安定）が担い、
+         タグは検索と、詳細画面での分類の手掛かりとして残す。
+         → フォルダはフェーズ2で実装する。 -->
+  <input
+    v-model="store.query"
+    placeholder="検索"
+    type="search"
+    aria-label="単語・意味・文脈から検索"
+  />
 
   <!-- ======================================================================
        単語一覧
@@ -171,9 +155,13 @@ async function handleLogout() {
     <p v-if="store.error" class="error-box">{{ store.error }}</p>
     <p v-if="store.loading" class="muted">読み込み中…</p>
 
+    <!-- 【0件の理由で文言を変える】
+         検索して0件なのと、そもそも1件も無いのとでは、
+         次にやるべきことが違う。同じ文言だと
+         「検索語を消せばいい」のか「登録すればいい」のか分からない。 -->
     <p v-else-if="store.terms.length === 0" class="muted">
-      {{ store.query || store.selectedTag
-        ? '条件に合う単語がありません'
+      {{ store.query
+        ? `「${store.query}」に一致する単語がありません`
         : 'まだ単語がありません。上の欄から登録してみてください。' }}
     </p>
 
