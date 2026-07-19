@@ -58,7 +58,11 @@ async function handleDelete() {
 <template>
   <article class="card">
     <div class="row" style="justify-content: space-between; align-items: flex-start">
-      <h3 class="grow">
+      <!-- 【詳細では見出しを大きくする】
+           本文側は「1件を読む」場所なので、
+           どの単語の話かが視線の起点になる必要がある。
+           以前は単語名と本文がほぼ同じ大きさで、起点が無かった。 -->
+      <h3 class="grow" :style="detailed ? 'font-size: var(--text-xl)' : ''">
         <!-- 詳細画面では見出しをリンクにしない（既にそのページにいるため） -->
         <RouterLink v-if="!detailed" :to="`/terms/${term.id}`">{{ term.word }}</RouterLink>
         <span v-else>{{ term.word }}</span>
@@ -69,7 +73,7 @@ async function handleDelete() {
       </span>
     </div>
 
-    <p v-if="term.context" class="muted" style="margin:0 0 0.5rem">
+    <p v-if="term.context" class="muted" style="margin: 0 0 var(--space-2)">
       文脈: {{ term.context }}
     </p>
 
@@ -84,7 +88,7 @@ async function handleDelete() {
          失敗
          ====================================================================== -->
     <div v-else-if="term.status === 'failed'">
-      <p class="error-box" style="margin-bottom:0.6rem">
+      <p class="error-box" style="margin-bottom: var(--space-3)">
         {{ term.error_message || '生成に失敗しました' }}
       </p>
       <button @click="handleRegenerate">再生成する</button>
@@ -93,7 +97,14 @@ async function handleDelete() {
     <!-- ======================================================================
          完了
          ====================================================================== -->
-    <div v-else>
+    <!--
+      【Transition で包む理由】
+        「生成中…」から解説への切り替えは、自分が操作していないのに起きる。
+        瞬間的に入れ替わると変化を見落とすので、150ms かけて現れさせる。
+        アニメーションを付ける基準（見落とすと困る変化）に合致する。
+    -->
+    <Transition name="reveal">
+      <div v-if="term.status === 'completed'">
       <!--
         【{{ }} を使い、v-html を使わない — 極めて重要】
 
@@ -115,36 +126,46 @@ async function handleDelete() {
         画面の改ざんや別サイトへの誘導は可能になる。
         防御は多層で持つ。
       -->
-      <p style="margin:0.3rem 0">{{ term.meaning }}</p>
+        <p style="margin: var(--space-1) 0 0">{{ term.meaning }}</p>
 
-      <template v-if="detailed || term.examples?.length">
-        <p class="muted" style="margin:0.8rem 0 0.2rem"><strong>例</strong></p>
-        <ul class="examples">
-          <!-- 【:key が必要な理由】
-               Vueがリストの各要素を識別するための目印。
-               無いと、並び替えや削除のときに
-               間違った要素を再利用して表示が崩れることがある。 -->
-          <li v-for="(ex, i) in term.examples" :key="i">{{ ex }}</li>
-        </ul>
-      </template>
+        <template v-if="detailed || term.examples?.length">
+          <!-- 【section-label を使う理由】
+               「例」「使い方」は内容ではなく見出し。
+               本文と同じ濃さで置くと、どこからが中身か分からない。
+               小さく・色を落とし・字間を空けてラベルだと伝える。 -->
+          <p class="section-label">例</p>
+          <ul class="examples">
+            <!-- 【:key が必要な理由】
+                 Vueがリストの各要素を識別するための目印。
+                 無いと、並び替えや削除のときに
+                 間違った要素を再利用して表示が崩れることがある。 -->
+            <li v-for="(ex, i) in term.examples" :key="i">{{ ex }}</li>
+          </ul>
+        </template>
 
-      <template v-if="detailed && term.usage_note">
-        <p class="muted" style="margin:0.8rem 0 0.2rem"><strong>使い方</strong></p>
-        <p style="margin:0">{{ term.usage_note }}</p>
-      </template>
-    </div>
+        <template v-if="detailed && term.usage_note">
+          <p class="section-label">使い方</p>
+          <p style="margin:0">{{ term.usage_note }}</p>
+        </template>
+      </div>
+    </Transition>
 
     <!-- ======================================================================
          タグ
-         ====================================================================== -->
-    <div v-if="term.tags?.length" style="margin-top:0.7rem">
+         ======================================================================
+         【tag-list で包む理由】
+           以前は各タグの margin で間隔を取っていたため、
+           折り返したときに間隔が崩れ「HTTPAPI設計設計」と
+           一続きの文字列に見えていた。
+           親に gap を置けば縦横どちらも均等になる。 -->
+    <div v-if="term.tags?.length" class="tag-list" style="margin-top: var(--space-4)">
       <span v-for="tag in term.tags" :key="tag.id" class="tag">{{ tag.name }}</span>
     </div>
 
     <!-- ======================================================================
          操作（詳細画面のみ）
          ====================================================================== -->
-    <div v-if="detailed" class="row" style="margin-top:1rem">
+    <div v-if="detailed" class="row" style="margin-top: var(--space-6)">
       <button v-if="term.status === 'completed'" @click="handleRegenerate">再生成</button>
       <button class="danger" @click="handleDelete">削除</button>
     </div>

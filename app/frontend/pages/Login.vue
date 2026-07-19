@@ -51,11 +51,15 @@ async function handleSubmit() {
        フォーム送信時に handleSubmit を呼び、
        ブラウザ本来の送信動作（ページ遷移）を止める。
        .prevent が無いとページが再読み込みされ、SPAが壊れる。 -->
-  <form class="card" @submit.prevent="handleSubmit" style="max-width: 24rem; margin: 2rem auto;">
-    <h2 style="margin-top:0">ログイン</h2>
+  <form
+    class="card stack"
+    @submit.prevent="handleSubmit"
+    style="max-width: 24rem; margin: var(--space-8) auto"
+  >
+    <h2 style="margin: 0; font-size: var(--text-xl)">単語メモ</h2>
 
     <!-- v-if は条件が真のときだけ描画する -->
-    <p v-if="error" class="error-box">{{ error }}</p>
+    <p v-if="error" class="error-box" style="margin: 0">{{ error }}</p>
 
     <label>
       メールアドレス
@@ -64,7 +68,7 @@ async function handleSubmit() {
       <input v-model="email" type="email" required autocomplete="username" />
     </label>
 
-    <label style="display:block; margin-top:0.75rem">
+    <label>
       パスワード
       <input v-model="password" type="password" required autocomplete="current-password" />
     </label>
@@ -72,11 +76,11 @@ async function handleSubmit() {
     <!-- 【:disabled の : は v-bind の省略形】
          JavaScriptの式の結果を属性の値にする。
          送信中は二重送信を防ぐため押せなくする。 -->
-    <button class="primary" type="submit" :disabled="submitting" style="width:100%; margin-top:1rem">
+    <button class="primary" type="submit" :disabled="submitting" style="width:100%">
       {{ submitting ? '確認中…' : 'ログイン' }}
     </button>
 
-    <p class="muted" style="margin-bottom:0">
+    <p class="muted" style="margin: 0">
       アカウントは <code>rails db:seed</code> で作成されます。
       メールとパスワードは <code>.env</code> の値です。
     </p>

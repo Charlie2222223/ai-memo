@@ -1,6 +1,9 @@
 /* ============================================================================
    styles.css — アプリ全体のスタイル
 
+   設計の根拠は docs/09-デザイン.md にまとめてある。
+   値を変えるときは、そちらの「してはいけないこと」に反していないか確認する。
+
    【CSSフレームワークを使わない理由】
      TailwindやBootstrapを入れると、クラス名の意味を別途覚える必要が出る。
      このアプリは画面数が少ないので、素のCSSで書いた方が
@@ -13,34 +16,136 @@
      結果的に記述が増える。
    ============================================================================ */
 
+/* ============================================================================
+   デザイントークン
+   ============================================================================ */
 :root {
-  --bg: #fafaf9;
-  --surface: #ffffff;
-  --border: #e7e5e4;
-  --text: #1c1917;
-  --muted: #78716c;
-  --accent: #0f766e;
-  --danger: #b91c1c;
-  --warning: #b45309;
-  --radius: 10px;
+  /* --------------------------------------------------------------------------
+     間隔：4px スケール
+     --------------------------------------------------------------------------
+     【なぜ px ではなく rem で書くのか】
+       見た目の刻みは 4px のままだが、単位は rem にしている。
+
+       px で書くと、ブラウザの文字サイズ設定を大きくしている人の画面で
+       「文字だけ大きくなり、余白は据え置き」になってレイアウトが潰れる。
+       rem は文字サイズに連動するので、余白も一緒に広がる。
+
+       既定の文字サイズは 16px なので 0.25rem = 4px。
+       つまり「4px刻み」と「文字サイズへの追従」を両立している。
+     -------------------------------------------------------------------------- */
+  --space-1: 0.25rem;   /*  4px */
+  --space-2: 0.5rem;    /*  8px */
+  --space-3: 0.75rem;   /* 12px */
+  --space-4: 1rem;      /* 16px */
+  --space-5: 1.25rem;   /* 20px */
+  --space-6: 1.5rem;    /* 24px */
+  --space-8: 2rem;      /* 32px */
+
+  /* --------------------------------------------------------------------------
+     角丸：入れ子で 4px ずつ小さくする
+     --------------------------------------------------------------------------
+     【なぜ階層ごとに変えるのか】
+       入れ子になった角丸は  内側 = 外側 − 余白  にすると同心円になり、
+       曲線が平行に見える。同じ値を使い回すと、内側の角が外側より
+       相対的に丸くなりすぎて、ずれて見える。
+
+       余白が 4px 刻みなので、角丸も自動的に 4px 刻みで減る。
+       体系が噛み合っているので、迷ったら「1つ内側なら 1段小さく」でよい。
+     -------------------------------------------------------------------------- */
+  --radius-1: 4px;    /* 最内：タグ、バッジ */
+  --radius-2: 8px;    /* ボタン、入力欄 */
+  --radius-3: 12px;   /* カード */
+  --radius-4: 16px;   /* 最外：パネル */
+
+  /* --------------------------------------------------------------------------
+     文字サイズ
+     --------------------------------------------------------------------------
+     【0.875rem（14px）が下限】
+       これより小さいと、日本語の漢字が潰れて読めなくなる。
+       補助的な情報でも 14px を下回らせない。
+     -------------------------------------------------------------------------- */
+  --text-sm: 0.875rem;    /* 14px：補助テキスト。これが下限 */
+  --text-base: 1rem;      /* 16px：本文 */
+  --text-lg: 1.125rem;    /* 18px：単語名 */
+  --text-xl: 1.375rem;    /* 22px：詳細画面の見出し */
+
+  /* --------------------------------------------------------------------------
+     色
+     --------------------------------------------------------------------------
+     【青は「操作できるもの」だけに使う】
+       リンク・主ボタン・選択中・フォーカス枠。それ以外には塗らない。
+       解説文を読むアプリなので、面を色で塗ると目が疲れて読めなくなる。
+
+     【状態色を青から独立させている理由】
+       以前は「完了」が accent（＝主色）と同じ色だった。
+       主色を画面のあちこちで使うと、「完了」の色が
+       ただの装飾に埋もれて状態を示さなくなる。
+       状態を示す色は、他の用途で使っていない色である必要がある。
+
+     【地の色が寒色グレーな理由】
+       青と暖色グレー（茶寄り）を並べると濁って見える。
+       色相を揃えると、彩度の低い面が青を邪魔しない。
+     -------------------------------------------------------------------------- */
+  --bg: #f8fafc;          /* 画面の地 */
+  --surface: #ffffff;     /* カード・パネルの面 */
+  --surface-2: #f1f5f9;   /* サイドバーの面（本文エリアと分ける） */
+  --border: #e2e8f0;
+  --text: #0f172a;
+  --muted: #64748b;
+
+  --accent: #2563eb;        /* 操作できるもの */
+  --accent-hover: #1d4ed8;
+  --accent-soft: #eff6ff;   /* 選択中の行の背景 */
+  --on-accent: #ffffff;     /* 青の上に乗る文字 */
+
+  --success: #15803d;   /* 完了 */
+  --warning: #b45309;   /* 生成中 */
+  --danger:  #b91c1c;   /* 失敗・削除 */
+
+  /* --------------------------------------------------------------------------
+     アニメーションの長さ
+     --------------------------------------------------------------------------
+     【付ける場所を限定している】
+       「見落とすと困る変化」にだけ付ける。
+       位置も存在も既に分かっているものには付けない。
+       一覧の行やページ遷移に付けないのは、探す作業を邪魔するため。
+       詳細は docs/09-デザイン.md を参照。
+     -------------------------------------------------------------------------- */
+  --dur-fast: 100ms;   /* ホバー・フォーカス。これ以上長いと反応が鈍く感じる */
+  --dur-base: 150ms;   /* AI生成の完了 */
+  --dur-slow: 200ms;   /* トースト、サイドバーの開閉 */
 }
 
-/* ダークモード対応。
+/* ダークモード。
    【prefers-color-scheme とは】OSの設定を読み取るCSSの機能。
-   スマホで夜に見ることを考えると、あると目が楽になる。 */
+   スマホで夜に見ることを考えると、あると目が楽になる。
+
+   【明るい青のままにしない理由】
+     暗い地の上では #2563eb は沈んで読めない。
+     コントラスト比を確保するため、明度を上げた青に差し替える。 */
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #1c1917;
-    --surface: #292524;
-    --border: #44403c;
-    --text: #f5f5f4;
-    --muted: #a8a29e;
-    --accent: #2dd4bf;
-    --danger: #f87171;
+    --bg: #0f172a;
+    --surface: #1e293b;
+    --surface-2: #172033;
+    --border: #334155;
+    --text: #f1f5f9;
+    --muted: #94a3b8;
+
+    --accent: #60a5fa;
+    --accent-hover: #93c5fd;
+    --accent-soft: #1e3a5f;
+    --on-accent: #0f172a;
+
+    --success: #4ade80;
     --warning: #fbbf24;
+    --danger:  #f87171;
   }
 }
 
+/* ============================================================================
+   基本
+   ============================================================================ */
 * { box-sizing: border-box; }
 
 body {
@@ -48,45 +153,127 @@ body {
   background: var(--bg);
   color: var(--text);
   font-family: system-ui, -apple-system, "Hiragino Sans", "Noto Sans JP", sans-serif;
-  line-height: 1.75;
+  font-size: var(--text-base);
   /* 【日本語の行間を広めにする理由】
      漢字とかなが混ざる日本語は、英語より字面が詰まって見える。
      行間を広げないと読みづらい。 */
+  line-height: 1.75;
 }
-
-.container {
-  /* 【max-width を設ける理由】
-     広いモニタで横幅いっぱいに文章が広がると、
-     目線の移動距離が長くなって非常に読みにくい。
-     1行の長さは40〜50文字程度が読みやすいとされる。 */
-  max-width: 44rem;
-  margin: 0 auto;
-  padding: 1rem;
-}
-
-header.app-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 1rem;
-  padding: 0.75rem 1rem;
-  border-bottom: 1px solid var(--border);
-  background: var(--surface);
-  /* スクロールしても上に残す。単語が増えたときに効く。 */
-  position: sticky;
-  top: 0;
-  z-index: 10;
-}
-
-header.app-header h1 { font-size: 1.05rem; margin: 0; }
 
 a { color: var(--accent); }
 
+/* 【フォーカス枠を全体で統一する】
+   キーボードだけで操作する人にとって、今どこにいるかが分からないと
+   操作が成立しない。:focus-visible はキーボード操作のときだけ出るので、
+   マウス利用者の見た目を邪魔しない。 */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* ============================================================================
+   レイアウト：サイドバー ＋ 本文
+   ============================================================================ */
+/* 【grid を使う理由】
+   サイドバーの幅を固定し、残り全部を本文に渡す、という指定が
+   grid-template-columns の1行で書ける。
+   float や flex でも組めるが、この構造は grid が最も素直。 */
+.app-shell {
+  display: grid;
+  min-height: 100vh;
+  /* スマホは1列。広い画面のときだけ2列にする（下のメディアクエリ） */
+  grid-template-columns: 1fr;
+}
+
+.sidebar {
+  background: var(--surface-2);
+  border-right: 1px solid var(--border);
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  /* 【最外の角を丸めない理由】
+     画面端に接する要素を丸めると、背景との間に三角の隙間ができて
+     かえって雑に見える。角丸は「浮いているもの」に付ける。 */
+}
+
+.main-panel {
+  padding: var(--space-4);
+  /* 【本文だけ幅を制限する理由】
+     1行が長すぎると、行の終わりから次の行の頭へ目線を戻すのが難しくなる。
+     読みやすいのは40〜50文字程度。
+     ただし制限するのは「読む場所」だけで、
+     サイドバーの一覧は幅いっぱいに使う（探す場所なので別の基準）。 */
+  max-width: 46rem;
+  width: 100%;
+}
+
+/* --------------------------------------------------------------------------
+   広い画面：2列にする
+   --------------------------------------------------------------------------
+   【48rem（768px）で切り替える理由】
+     これより狭いとサイドバーと本文の両方が窮屈になり、
+     どちらも中途半端に読みにくくなる。
+     2列にして得があるのは、両方に十分な幅が取れるときだけ。
+   -------------------------------------------------------------------------- */
+@media (min-width: 48rem) {
+  .app-shell {
+    grid-template-columns: 20rem 1fr;
+  }
+
+  .sidebar {
+    /* 【position: sticky で貼り付ける】
+       本文を長くスクロールしても、単語一覧は常に見えている状態を保つ。
+       単語帳は「一覧と本文を往復する」道具なので、
+       戻るたびにスクロールし直すのは無駄な操作になる。 */
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    overflow-y: auto;
+  }
+
+  .main-panel { padding: var(--space-6); }
+}
+
+/* --------------------------------------------------------------------------
+   スマホ：URLに応じて片方だけ表示する
+   --------------------------------------------------------------------------
+   【ドロワー（重なって出てくるメニュー）にしなかった理由】
+     このアプリの操作は「一覧から探す → 1件読む → 一覧に戻る」で、
+     行き来そのものが主な操作。
+     ドロワーだと開閉ボタンを押す手間が毎回増える。
+
+     URLで切り替えれば、ブラウザの「戻る」がそのまま
+     「一覧に戻る」として使える。学習コストがゼロになる。
+   -------------------------------------------------------------------------- */
+@media (max-width: 47.99rem) {
+  /* 一覧を見ているとき（/）は本文を出さない */
+  .app-shell.showing-list .main-panel { display: none; }
+  /* 詳細を見ているとき（/terms/:id）はサイドバーを出さない */
+  .app-shell.showing-detail .sidebar { display: none; }
+
+  .sidebar {
+    border-right: none;
+    min-height: 100vh;
+  }
+}
+
+/* 「← 一覧に戻る」はスマホでだけ出す。
+   広い画面では一覧が常に左に見えているので、押す意味が無い上に
+   毎回同じ位置を占有して本文の開始位置を下げる。 */
+.back-link { margin: 0 0 var(--space-4); }
+@media (min-width: 48rem) {
+  .back-link { display: none; }
+}
+
+/* ============================================================================
+   フォーム部品
+   ============================================================================ */
 button, .btn {
   font: inherit;
-  padding: 0.5rem 0.9rem;
+  padding: var(--space-2) var(--space-4);
   border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border-radius: var(--radius-2);
   background: var(--surface);
   color: var(--text);
   cursor: pointer;
@@ -95,77 +282,331 @@ button, .btn {
      44×44px以上が推奨されている。
      小さいとスマホで押しにくく、誤タップが増える。 */
   min-height: 44px;
+  /* 【ここにアニメーションを付ける理由】
+     「押せる」ことのフィードバック。無いと反応が無いように感じる。
+     100ms なのは、これ以上長いと操作が重く感じるため。 */
+  transition: background-color var(--dur-fast), border-color var(--dur-fast), color var(--dur-fast);
 }
-button:hover { border-color: var(--accent); }
-button:disabled { opacity: 0.5; cursor: not-allowed; }
 
-button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
-button.danger  { color: var(--danger); }
+button:hover { border-color: var(--accent); color: var(--accent); }
+button:disabled { opacity: 0.5; cursor: not-allowed; }
+button:disabled:hover { border-color: var(--border); color: var(--text); }
+
+button.primary {
+  background: var(--accent);
+  color: var(--on-accent);
+  border-color: var(--accent);
+  font-weight: 600;
+}
+button.primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); color: var(--on-accent); }
+
+button.danger { color: var(--danger); }
+button.danger:hover { border-color: var(--danger); color: var(--danger); }
+
+/* 文字だけのボタン（枠を持たない補助操作） */
+button.ghost {
+  border-color: transparent;
+  background: transparent;
+  color: var(--muted);
+  padding: var(--space-1) var(--space-2);
+  min-height: auto;
+}
+button.ghost:hover { color: var(--accent); border-color: transparent; }
 
 input, textarea, select {
   font: inherit;
   width: 100%;
-  padding: 0.6rem;
+  padding: var(--space-2) var(--space-3);
   border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border-radius: var(--radius-2);
   background: var(--surface);
   color: var(--text);
   /* 【font-size を16px以上にする理由】
      iOSのSafariは、16px未満の入力欄をタップすると
      自動でズームする。これが起きると操作しづらい。 */
   font-size: 16px;
+  transition: border-color var(--dur-fast);
 }
+input:hover, textarea:hover { border-color: var(--muted); }
 
+label { display: block; }
+
+/* ============================================================================
+   カード（詳細画面で解説を読む場所）
+   ============================================================================ */
 .card {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 1rem;
-  margin-bottom: 0.85rem;
+  border-radius: var(--radius-3);
+  padding: var(--space-4);
+  margin-bottom: var(--space-3);
 }
 
-.card h3 { margin: 0 0 0.35rem; font-size: 1.1rem; }
+.card h3 { margin: 0 0 var(--space-1); font-size: var(--text-lg); }
 
-.muted { color: var(--muted); font-size: 0.88rem; }
+/* ============================================================================
+   文字
+   ============================================================================ */
+.muted { color: var(--muted); font-size: var(--text-sm); }
+
+.section-label {
+  /* 見出しとしての「例」「使い方」。本文より小さく、色を落として、
+     文字間を空けることで「ラベルであって内容ではない」と伝える。 */
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--muted);
+  letter-spacing: 0.04em;
+  margin: var(--space-5) 0 var(--space-2);
+}
+
+/* ============================================================================
+   タグ
+   ============================================================================ */
+/* 【ピル型（999px）をやめた理由】
+   角丸を「入れ子で4pxずつ減らす」規則に統一したため、
+   最内の要素であるタグは 4px になる。
+   規則の例外を作ると、統一されているという前提そのものが崩れる。
+
+   【margin ではなく親の gap で間隔を取る理由】
+   以前はタグ同士が詰まって「HTTPAPI設計設計」と一続きに見えていた。
+   個々の margin だと折り返し時に間隔が崩れるが、
+   親に gap を置けば縦横どちらも均等になる。 */
+.tag-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
 
 .tag {
   display: inline-block;
-  padding: 0.1rem 0.55rem;
-  margin: 0.15rem 0.25rem 0.15rem 0;
+  padding: var(--space-1) var(--space-2);
   border: 1px solid var(--border);
-  border-radius: 999px;
-  font-size: 0.8rem;
-  background: transparent;
+  border-radius: var(--radius-1);
+  font-size: var(--text-sm);
+  background: var(--surface);
+  color: var(--muted);
   min-height: auto;
+  line-height: 1.5;
 }
-.tag.active { background: var(--accent); color: #fff; border-color: var(--accent); }
 
-.status { font-size: 0.8rem; font-weight: 600; }
+/* 押せるタグ（絞り込み用）だけホバーを付ける。
+   表示専用のタグに反応を付けると、押せると誤解させる。 */
+button.tag { cursor: pointer; }
+button.tag:hover { border-color: var(--accent); color: var(--accent); }
+
+button.tag.active {
+  background: var(--accent);
+  color: var(--on-accent);
+  border-color: var(--accent);
+}
+button.tag.active:hover { background: var(--accent-hover); color: var(--on-accent); }
+
+/* ============================================================================
+   状態表示
+   ============================================================================ */
+.status { font-size: var(--text-sm); font-weight: 600; }
 .status.pending   { color: var(--warning); }
 .status.failed    { color: var(--danger); }
-.status.completed { color: var(--accent); }
+.status.completed { color: var(--success); }
 
 /* 生成中を示す点滅。
+   【これは装飾ではない】
+     「今まさに動いている」ことを示す情報。止まって見えると
+     故障したのか処理中なのか区別がつかない。
+     アニメーションを付ける基準（見落とすと困る変化）に合致する。
+
    【prefers-reduced-motion への配慮】
-   動きに敏感な人向けに、OSで「視差効果を減らす」設定が有効なら止める。
-   アクセシビリティの基本的な配慮。 */
-@keyframes pulse { 0%,100% { opacity: 1 } 50% { opacity: 0.45 } }
+     動きに敏感な人向けに、OSで「視差効果を減らす」設定が有効なら止める。 */
+@keyframes pulse { 0%, 100% { opacity: 1 } 50% { opacity: 0.45 } }
 .status.pending { animation: pulse 1.4s ease-in-out infinite; }
-@media (prefers-reduced-motion: reduce) {
-  .status.pending { animation: none; }
+
+/* ============================================================================
+   単語の行（サイドバーの一覧）
+   ============================================================================ */
+.term-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
 }
 
-.examples { margin: 0.4rem 0 0; padding-left: 1.2rem; }
-.examples li { margin-bottom: 0.3rem; }
+.term-row {
+  display: block;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-2);
+  /* 【リンクだが色と下線を打ち消す理由】
+     行全体がリンクなので、既定の青文字＋下線だと一覧全体が青くなる。
+     「青は操作できるもの」という規則は守りつつ、
+     ここでは選択状態と hover で操作可能性を伝える。 */
+  color: inherit;
+  text-decoration: none;
+  min-height: 44px;
+  transition: background-color var(--dur-fast);
+}
 
+.term-row:hover { background: var(--surface); }
+
+/* 【選択中の行を塗る】
+   マスター・ディテール型では「今どれを読んでいるか」が
+   一覧側で分からないと、行き来したときに迷子になる。 */
+.term-row.active {
+  background: var(--accent-soft);
+  /* 【左に線を引く理由】
+     背景色だけだと、ダークモードや色覚特性によっては差が伝わらない。
+     位置という色以外の手掛かりを足しておく。 */
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.term-row-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+
+.term-row-word {
+  font-weight: 600;
+  font-size: var(--text-base);
+  /* 【min-width: 0 が必要な理由】
+     flex の子は既定で「中身より小さくならない」ため、
+     長い単語があると日付を画面外へ押し出す。
+     0 を指定して初めて縮小と省略が効くようになる。 */
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 【margin-left: auto で右端へ寄せる】
+   空の要素を挟んだり position を使うより、
+   余白を全部左に押し付けるこの書き方が最も壊れにくい。 */
+.term-row-date {
+  margin-left: auto;
+  flex-shrink: 0;
+  font-size: var(--text-sm);
+  color: var(--muted);
+}
+
+.term-row-excerpt {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--muted);
+  /* 【1行で省略する】
+     行数で切る指定。文字数ではなく幅で切れるので、
+     画面サイズに自動で追従する。
+     JavaScript で slice すると幅に関係なく固定文字数になり、
+     狭い画面では溢れ、広い画面では余白が余る。 */
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* ============================================================================
+   例のリスト
+   ============================================================================ */
+.examples { margin: 0; padding-left: var(--space-5); }
+.examples li { margin-bottom: var(--space-2); }
+
+/* ============================================================================
+   エラー表示
+   ============================================================================ */
 .error-box {
   border: 1px solid var(--danger);
   color: var(--danger);
-  border-radius: var(--radius);
-  padding: 0.7rem;
-  margin-bottom: 1rem;
-  font-size: 0.9rem;
+  border-radius: var(--radius-2);
+  padding: var(--space-3);
+  margin-bottom: var(--space-4);
+  font-size: var(--text-sm);
 }
 
-.row { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
+/* ============================================================================
+   空の状態
+   ============================================================================ */
+/* 【空のときに何も出さないのは不親切】
+   「壊れているのか、まだ何も無いのか」が区別できない。
+   次に何をすればいいかを書く。 */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  min-height: 60vh;
+  color: var(--muted);
+  text-align: center;
+}
+
+/* ============================================================================
+   トースト（自動分類などの通知）
+   ============================================================================ */
+.toast-area {
+  position: fixed;
+  bottom: var(--space-4);
+  right: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  /* 【pointer-events: none の理由】
+     通知の下にあるボタンが押せなくなるのを防ぐ。
+     通知自体を押したい場合だけ、子要素で auto に戻す。 */
+  pointer-events: none;
+  z-index: 100;
+}
+
+.toast {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius-2);
+  padding: var(--space-3) var(--space-4);
+  font-size: var(--text-sm);
+  box-shadow: 0 4px 12px rgb(0 0 0 / 0.1);
+  max-width: 20rem;
+}
+
+/* 【出入りにアニメーションを付ける理由】
+   通知は自分が操作していないのに現れる。
+   突然出ると驚くし、突然消えると見落とす。
+   動きで「現れた／去った」を伝える。 */
+.toast-enter-active, .toast-leave-active {
+  transition: opacity var(--dur-slow), transform var(--dur-slow);
+}
+.toast-enter-from, .toast-leave-to {
+  opacity: 0;
+  transform: translateY(var(--space-2));
+}
+
+/* ============================================================================
+   AI生成が完了したときの切り替え
+   ============================================================================
+   【ここにアニメーションを付ける理由】
+     「生成中…」から解説へ変わるのは、自分が操作していないのに起きる変化。
+     瞬間的に入れ替わると、変わったこと自体を見落とす。
+     150ms かけて現れると、視線が変化を追える。
+
+   【フェードだけで、動きを付けない理由】
+     解説は「読む」ためのもの。スライドや拡大を付けると、
+     文字が動いている間は読めず、待ち時間が増えるだけになる。 */
+.reveal-enter-active { transition: opacity var(--dur-base); }
+.reveal-enter-from { opacity: 0; }
+
+/* ============================================================================
+   汎用
+   ============================================================================ */
+.row { display: flex; gap: var(--space-2); align-items: center; flex-wrap: wrap; }
 .grow { flex: 1; min-width: 0; }
+.stack { display: flex; flex-direction: column; gap: var(--space-3); }
+
+/* ============================================================================
+   動きを減らす設定への対応
+   ============================================================================
+   【まとめて最後に置く理由】
+     個々の指定に @media を書くと、新しくアニメーションを足したときに
+     対応を忘れる。ここで一括して打ち消せば、書き漏らしが起きない。 */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
