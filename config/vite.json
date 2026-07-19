@@ -4,8 +4,8 @@
     "watchAdditionalPaths": []
   },
   "development": {
-    "autoBuild": true,
-    "skipProxy": true,
+    "autoBuild": false,
+    "skipProxy": false,
     "publicOutputDir": "vite-dev",
     "port": 3036,
     "host": "0.0.0.0"

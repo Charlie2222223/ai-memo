@@ -87,11 +87,19 @@ Rails の Host Authorization に弾かれる場合は
 ## 構成
 
 ```
-web    Rails（API・SPA入口・Viteビルド）   :3000
+web    Rails（API・SPA入口・Vite中継）     :3000
+vite   Vite開発サーバー（HMR）※開発のみ   :3036
 worker Sidekiq（AI呼び出しを別プロセスで）
 db     PostgreSQL                        :5432
 redis  ジョブキュー ＋ WebSocket の pub/sub
 ```
+
+`app/frontend/` を保存すると、**ブラウザを再読み込みせずに画面へ反映**されます（HMR）。
+入力途中のフォームの内容やスクロール位置もそのまま残ります。
+
+> 画面が真っ白なときは `docker compose logs vite` を見てください。
+> 開発中は Rails が自前でJSを持たず vite に中継しているため、
+> vite が落ちていると画面が表示されません。
 
 | 層 | 技術 |
 |---|---|

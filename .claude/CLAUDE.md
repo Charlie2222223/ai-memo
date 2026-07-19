@@ -24,7 +24,7 @@ Claude Code がこのリポジトリで作業するときに読むファイル�
 
 | 層 | 技術 | 選定理由 |
 |---|---|---|
-| コンテナ | Docker Compose（4サービス） | 環境差をなくす |
+| コンテナ | Docker Compose（開発5サービス） | 環境差をなくす |
 | バックエンド | Rails 8.1 / Ruby 3.3 | |
 | フロントエンド | Vue 3 + Vite（SPA） | |
 | DB | PostgreSQL 16 | |
@@ -38,11 +38,26 @@ Claude Code がこのリポジトリで作業するときに読むファイル�
 ### コンテナ構成
 
 ```
-web    Rails（API・SPA入口HTML・Viteビルド）  :3000
+web    Rails（API・SPA入口HTML・Vite中継）    :3000
+vite   Vite開発サーバー（HMR）※開発のみ      :3036
 worker Sidekiq（AI呼び出しを別プロセスで実行）
 db     PostgreSQL                            :5432
 redis  ジョブキュー ＋ Action Cable の pub/sub
 ```
+
+`vite` は開発専用。本番（Fly.io）は事前ビルド済みの静的ファイルを配信するため存在しない。
+開発中に `vite` が落ちていると**画面が一切表示されない**（Rails は自前でJSを持たないため）。
+
+#### HMR の通信経路（2系統に分かれる）
+
+```
+① アセット  ブラウザ → localhost:3000/vite-dev/... → Rails → vite:3036
+② 更新通知  ブラウザ → ws://localhost:3036 → vite      （Railsを経由しない）
+```
+
+②が直結なのは、中継役の `ViteRuby::DevServerProxy` が `Rack::Proxy` 製で
+WebSocket の Upgrade を扱えないため。中継させると画面は出るが自動更新だけが静かに止まる。
+①を Rails 経由に保つことで、ブラウザから見たオリジンは 3000 のみで変わらない。
 
 ---
 
@@ -63,6 +78,8 @@ redis  ジョブキュー ＋ Action Cable の pub/sub
 | **リトライは1層のみ**（`Llm::Client`） | 多層で重ねると指数的に課金が増える | 3×25 = 75回 呼び出して1単語250円超 |
 | 復習機能（SRS）は作らない | 単語0件では設計も検証もできない | 使われない機能が保守対象として残る |
 | Solid Queue ではなく Sidekiq | 実務遭遇率と可視化されたUI | |
+| HMRのアセットは**Rails経由**（Viteに直アクセスさせない） | 上の「同一オリジン」を崩さないため | 3036が別オリジンになりCORS設定が要る |
+| HMRの**ws だけ**は 3036 に直結（例外） | Rack::Proxy が Upgrade を扱えず中継不能 | 画面は出るが自動更新だけ静かに止まる |
 
 ---
 
@@ -115,16 +132,31 @@ redis  ジョブキュー ＋ Action Cable の pub/sub
 ```bash
 docker compose up -d                          # 起動
 docker compose logs -f worker                 # ジョブの実行状況
+docker compose logs -f vite                   # フロントのビルドエラー（画面が出ない時はまずここ）
 docker compose exec web bundle exec rspec     # テスト
 docker compose exec web rails console         # コンソール
 docker compose exec web rails db:migrate      # マイグレーション
 
 # gemを追加したら（イメージ再ビルドではなくこちら）
 docker compose exec web bundle install && docker compose restart web worker
+
+# npmパッケージを追加したら（viteの再起動が要る）
+docker compose exec vite npm install && docker compose restart vite
 ```
 
 - アプリ: http://localhost:3000
 - Sidekiq管理画面: http://localhost:3000/sidekiq （要ログイン）
+
+### HMRが効かなくなったときの切り分け
+
+上から順に見る。**画面が出るかどうか**で原因が大きく分かれる。
+
+| 症状 | 見るところ |
+|---|---|
+| 画面が真っ白／JSが404 | `docker compose logs vite`。viteが落ちていないか |
+| 画面は出るが保存しても変わらない | ブラウザのコンソールでws接続エラーを確認。3036が公開されているか |
+| 保存しても何も起きない（wsは正常） | 変更がコンパイル結果に影響していない可能性。テンプレート内の文言を変えて再確認 |
+| ポートがずれた | `strictPort: true` にしてあるので、埋まっていればviteは起動失敗する。ログに出る |
 
 ---
 
@@ -134,5 +166,4 @@ docker compose exec web bundle install && docker compose restart web worker
 |---|---|
 | 復習機能（間隔反復） | 単語が数十件溜まってから設計する |
 | ユーザー登録画面 | 1人用のため不要。seed で作成 |
-| HMR（保存即反映） | autoBuild 方式のため、保存後に再読み込みが必要 |
 | パスワード再設定 | 1人用のため。必要なら `rails console` から変更 |
