@@ -19,10 +19,13 @@
 import { onMounted, ref, watch } from 'vue'
 import { useTermsStore } from '../stores/terms'
 import { useSessionStore } from '../stores/session'
+import { useFoldersStore } from '../stores/folders'
 import TermRow from './TermRow.vue'
+import FolderNav from './FolderNav.vue'
 
 const store = useTermsStore()
 const session = useSessionStore()
+const folders = useFoldersStore()
 
 const newWord = ref('')
 const newContext = ref('')
@@ -36,7 +39,8 @@ const formError = ref('')
 const showContext = ref(false)
 
 onMounted(() => {
-  store.fetchTerms()
+  store.fetchTerms(folders.selectedFolderId)
+  folders.fetchFolders()
 })
 
 // ----------------------------------------------------------------------------
@@ -52,7 +56,15 @@ onMounted(() => {
 let timer = null
 watch(() => store.query, () => {
   clearTimeout(timer)
-  timer = setTimeout(() => store.fetchTerms(), 300)
+  timer = setTimeout(() => store.fetchTerms(folders.selectedFolderId), 300)
+})
+
+// 【フォルダの切り替えにデバウンスを掛けない理由】
+//   検索は1文字ごとに値が変わるが、フォルダはクリック1回で1度だけ変わる。
+//   遅延させると「押したのに反応しない」という体感になるだけで、
+//   抑制できるリクエストが無い。
+watch(() => folders.selectedFolderId, (id) => {
+  store.fetchTerms(id)
 })
 
 async function handleCreate() {
@@ -145,6 +157,11 @@ async function handleLogout() {
   />
 
   <!-- ======================================================================
+       フォルダによる絞り込み
+       ====================================================================== -->
+  <FolderNav />
+
+  <!-- ======================================================================
        単語一覧
        ====================================================================== -->
   <!-- 【grow を付ける理由】
@@ -156,13 +173,13 @@ async function handleLogout() {
     <p v-if="store.loading" class="muted">読み込み中…</p>
 
     <!-- 【0件の理由で文言を変える】
-         検索して0件なのと、そもそも1件も無いのとでは、
+         検索の結果0件なのか、フォルダが空なのか、そもそも1件も無いのかで
          次にやるべきことが違う。同じ文言だと
-         「検索語を消せばいい」のか「登録すればいい」のか分からない。 -->
+         「検索語を消す」のか「絞り込みを外す」のか「登録する」のか分からない。 -->
     <p v-else-if="store.terms.length === 0" class="muted">
-      {{ store.query
-        ? `「${store.query}」に一致する単語がありません`
-        : 'まだ単語がありません。上の欄から登録してみてください。' }}
+      <template v-if="store.query">「{{ store.query }}」に一致する単語がありません</template>
+      <template v-else-if="folders.selectedFolderId">このフォルダは空です</template>
+      <template v-else>まだ単語がありません。上の欄から登録してみてください。</template>
     </p>
 
     <!-- 【:key に term.id を使う理由】

@@ -43,10 +43,11 @@ module Llm
   #     ・キーワード引数で作るので、引数の順序を間違えない
   #   という点で、値オブジェクトにはこちらが適している。
   Explanation = Data.define(
-    :meaning,       # String … 単語の意味
-    :examples,      # Array  … 例文の配列
-    :usage_note,    # String … 使い方・使う場面
-    :suggested_tags # Array  … AIが提案したタグ名
+    :meaning,        # String … 単語の意味
+    :examples,       # Array  … 例文の配列
+    :usage_note,     # String … 使い方・使う場面
+    :suggested_tags, # Array  … AIが提案したタグ名
+    :folder          # String … AIが選んだ／提案したフォルダ名
   ) do
     # ------------------------------------------------------------------------
     # AIの応答（ハッシュ）から作る
@@ -72,7 +73,18 @@ module Llm
         # 【first(5) の理由】AIが大量にタグを返すことがある。
         #   タグが20個付いた単語は分類として意味を成さないので、
         #   上限を設けておく。
-        suggested_tags: Array(hash["suggested_tags"]).map(&:to_s).first(5)
+        suggested_tags: Array(hash["suggested_tags"]).map(&:to_s).first(5),
+        # 【to_s.strip で受ける理由】
+        #   キーが欠けていれば nil.to_s = "" になり、
+        #   受け取り側は blank? で判定するだけで済む。
+        #   nil と "" の両方を気にする必要が無くなる。
+        #
+        # 【truncate している理由】
+        #   folders.name の長さ制限は30文字。
+        #   AIが長い名前を返すと検証で落ち、分類だけでなく
+        #   解説の保存まで巻き込んで失敗する。
+        #   ここで丸めておけば、少なくとも解説は残る。
+        folder: hash["folder"].to_s.strip.truncate(30)
       )
     end
   end

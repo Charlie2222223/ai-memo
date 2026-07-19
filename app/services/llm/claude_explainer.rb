@@ -26,11 +26,17 @@ module Llm
       @client = client
     end
 
-    def call(word:, context: nil)
+    def call(word:, context: nil, folders: [])
       # ------------------------------------------------------------------
       # ① プロンプトを組み立てる
       # ------------------------------------------------------------------
-      user_message = PROMPT.user_message(word: word, context: context)
+      # 【folders を渡しても呼び出し回数は増えない】
+      #   分類は解説と同じ1回の structured output に相乗りさせている。
+      #   分類のためだけに別途APIを呼ぶ設計にすると、
+      #   1単語あたりの費用が倍になる（3.4円 → 6.8円）。
+      #   スキーマにフィールドを1つ足すだけなら、増えるのは
+      #   わずかな出力トークンだけで済む。
+      user_message = PROMPT.user_message(word: word, context: context, folders: folders)
 
       # ------------------------------------------------------------------
       # ② APIを呼ぶ（リトライ・計測は Client の中で行われる）

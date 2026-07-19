@@ -14,7 +14,8 @@ class TermsController < ApplicationController
   #   show/update/destroy/regenerate の4箇所に同じ取得処理を書くと、
   #   1箇所だけ権限チェックの書き方が違う、という事故が起きる。
   #   1箇所にまとめれば、そこだけ正しければ全部正しい。
-  before_action :set_term, only: [ :show, :update, :destroy, :regenerate ]
+  before_action :set_term,
+                only: [ :show, :update, :destroy, :regenerate, :accept_folder, :reject_folder ]
 
   # ==========================================================================
   # GET /api/terms — 一覧
@@ -69,20 +70,24 @@ class TermsController < ApplicationController
     #   Rubyが構文エラーにすることがある（実際にここで踏んだ）。
     #   説明はチェーンの外に書き、チェーン自体は連続させる。
     # ------------------------------------------------------------------------
+    # includes に :folder を足しているのもN+1対策。
+    # フォルダ名を一覧に出すので、これが無いと単語の件数だけ
+    # SELECT * FROM folders が発行される。
     terms = current_user.terms
-                        .includes(:tags)
+                        .includes(:tags, :folder)
                         .search(params[:q])
                         .with_tag(params[:tag])
+                        .in_folder(params[:folder_id])
                         .recent
 
-    render json: { terms: terms.map { |t| term_json(t) } }
+    render json: { terms: terms.map { |t| TermSerializer.call(t) } }
   end
 
   # ==========================================================================
   # GET /api/terms/:id — 詳細
   # ==========================================================================
   def show
-    render json: { term: term_json(@term) }
+    render json: { term: TermSerializer.call(@term) }
   end
 
   # ==========================================================================
@@ -116,7 +121,7 @@ class TermsController < ApplicationController
 
       # 201 Created は「新しく作られた」ことを表すステータス。
       # 200 でも動くが、201 の方が意図が正確に伝わる。
-      render json: { term: term_json(term) }, status: :created
+      render json: { term: TermSerializer.call(term) }, status: :created
     else
       # 422 Unprocessable Entity は
       # 「リクエストの形式は正しいが、内容が検証に通らない」の意味。
@@ -131,7 +136,7 @@ class TermsController < ApplicationController
   # ==========================================================================
   def update
     if @term.update(term_params)
-      render json: { term: term_json(@term) }
+      render json: { term: TermSerializer.call(@term) }
     else
       render json: { errors: @term.errors.full_messages },
              status: :unprocessable_entity
@@ -168,7 +173,48 @@ class TermsController < ApplicationController
     @term.update!(status: :pending, error_message: nil)
     ExplainTermJob.perform_later(@term.id)
 
-    render json: { term: term_json(@term) }, status: :accepted  # 202 = 受け付けた
+    render json: { term: TermSerializer.call(@term) }, status: :accepted  # 202 = 受け付けた
+  end
+
+  # ==========================================================================
+  # POST /api/terms/:id/accept_folder — AIが提案したフォルダを承認する
+  # ==========================================================================
+  # 【なぜ update ではなく専用のURLにするのか】
+  #   やっていることは「フォルダを作って、単語をそこへ入れて、提案を消す」
+  #   という3段階の操作で、単なる属性の更新ではない。
+  #
+  #   update に folder_id を送る形にすると、画面側が
+  #   「先にフォルダを作ってIDを得てから、それを送る」という
+  #   2往復の手順を踏む必要がある。
+  #   途中で失敗すると空のフォルダだけが残る。
+  #
+  #   1つの意味のある操作は、1つのURLにまとめる。
+  def accept_folder
+    if @term.suggested_folder_name.blank?
+      return render json: { error: "承認できる提案がありません" },
+                    status: :unprocessable_entity
+    end
+
+    @term.accept_suggested_folder!
+    render json: { term: TermSerializer.call(@term) }
+  rescue ActiveRecord::RecordInvalid => e
+    render json: { errors: [ e.record.errors.full_messages.to_sentence ] },
+           status: :unprocessable_entity
+  end
+
+  # ==========================================================================
+  # DELETE /api/terms/:id/suggested_folder — 提案を破棄する
+  # ==========================================================================
+  # 【却下という操作が必要な理由】
+  #   提案が気に入らない場合、承認しない限り「未分類」に残り続ける。
+  #   却下できないと、承認したくない提案がいつまでも
+  #   未分類の件数に乗り続け、本当に手つかずの単語が埋もれる。
+  #
+  #   却下しても単語自体は未分類に残るので、
+  #   あとから手動で好きなフォルダへ移せる。
+  def reject_folder
+    @term.update!(suggested_folder_name: nil)
+    render json: { term: TermSerializer.call(@term) }
   end
 
   private
@@ -215,37 +261,18 @@ class TermsController < ApplicationController
   #   「安全なものだけ許可する」形にする。
   #   カラムを後から追加しても、ここに書かない限り
   #   自動的に受け付けられることはない。
+  # 【folder_id を許可してよい理由】
+  #   status や user_id と違い、folder_id は利用者が変更してよい値。
+  #   単語を別のフォルダへ移すのは正当な操作なので、許可する必要がある。
+  #
+  # 【では他人のフォルダのIDを送られたらどうなるか】
+  #   Term モデルの folder_must_belong_to_same_user が弾く。
+  #   ここで許可することと、値が妥当かの検証は別の仕事。
+  #
+  #   コントローラで毎回チェックする方法もあるが、
+  #   更新経路が増えるたびに書き忘れる。
+  #   モデルに置けば、どの経路から保存しても必ず通る。
   def term_params
-    params.expect(term: [ :word, :context ])
-  end
-
-  # ==========================================================================
-  # 単語をJSONに変換する
-  # ==========================================================================
-  # 【to_json をそのまま使わない理由】
-  #   全カラムが出力されるので、内部用のカラムまで漏れる。
-  #   さらにカラムを足すたび、意図せずAPIの応答が変わってしまう。
-  #   出すものを明示的に列挙すれば、そうした事故が起きない。
-  def term_json(term)
-    {
-      id: term.id,
-      word: term.word,
-      context: term.context,
-      meaning: term.meaning,
-      examples: term.examples,
-      usage_note: term.usage_note,
-      status: term.status,          # "pending" / "completed" / "failed"
-      error_message: term.error_message,
-      # 【&. を使う理由】generated_at は生成前は nil。
-      #   nil に .iso8601 を呼ぶと落ちるので、nil ならそのまま nil を返す。
-      generated_at: term.generated_at&.iso8601,
-      created_at: term.created_at.iso8601,
-      # 【ISO 8601 形式で返す理由】
-      #   "2026-07-19T14:30:00Z" のような国際標準の書き方。
-      #   JavaScriptの new Date() がそのまま解釈できる。
-      #   "2026/07/19 14:30" のような独自形式だと、
-      #   ブラウザや言語によって解釈が変わって事故になる。
-      tags: term.tags.map { |tag| { id: tag.id, name: tag.name } }
-    }
+    params.expect(term: [ :word, :context, :folder_id ])
   end
 end

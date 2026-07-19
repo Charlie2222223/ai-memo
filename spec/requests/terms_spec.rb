@@ -292,4 +292,115 @@ RSpec.describe "Terms", type: :request do
       expect(unused[:terms_count]).to eq(0)
     end
   end
+
+  # ==========================================================================
+  # フォルダ（所属の変更・AI提案の承認/却下）
+  # ==========================================================================
+  describe "フォルダ" do
+    before { sign_in_as(owner) }
+
+    describe "PATCH /api/terms/:id（フォルダの移動）" do
+      it "自分のフォルダへ移動できる" do
+        folder = owner.folders.create!(name: "Web・HTTP")
+        term = create(:term, user: owner)
+
+        patch "/api/terms/#{term.id}",
+              params: { term: { folder_id: folder.id } }, as: :json
+
+        expect(response).to have_http_status(:ok)
+        expect(term.reload.folder).to eq(folder)
+      end
+
+      it "他人のフォルダへは移動できない" do
+        # ------------------------------------------------------------------
+        # 【ここが権限の穴になりうる箇所】
+        #   folder_id は「単語を別のフォルダへ移す」ために
+        #   Strong Parameters で許可せざるを得ない。
+        #
+        #   許可した以上、他人のフォルダのIDを送りつけられる。
+        #   通ってしまうと、自分の単語が他人のフォルダに所属し、
+        #   そのフォルダを開いた他人の画面に現れてしまう。
+        #
+        #   Term モデルの folder_must_belong_to_same_user が防いでいる。
+        # ------------------------------------------------------------------
+        others_folder = other.folders.create!(name: "他人のフォルダ")
+        term = create(:term, user: owner)
+
+        patch "/api/terms/#{term.id}",
+              params: { term: { folder_id: others_folder.id } }, as: :json
+
+        expect(response).to have_http_status(:unprocessable_entity)
+        expect(term.reload.folder_id).to be_nil
+      end
+    end
+
+    describe "POST /api/terms/:id/accept_folder（提案の承認）" do
+      it "提案されたフォルダが作られ、単語がそこに入る" do
+        term = create(:term, user: owner, suggested_folder_name: "Web・HTTP")
+
+        post "/api/terms/#{term.id}/accept_folder"
+
+        expect(response).to have_http_status(:ok)
+        term.reload
+        expect(term.folder.name).to eq("Web・HTTP")
+        # 承認したら提案は残さない。残ると承認UIが出続ける。
+        expect(term.suggested_folder_name).to be_nil
+      end
+
+      it "提案が無いときは 422 になる" do
+        term = create(:term, user: owner)
+
+        post "/api/terms/#{term.id}/accept_folder"
+
+        expect(response).to have_http_status(:unprocessable_entity)
+      end
+
+      it "他人の単語は承認できず 404 になる" do
+        term = create(:term, user: other, suggested_folder_name: "Web・HTTP")
+
+        post "/api/terms/#{term.id}/accept_folder"
+
+        expect(response).to have_http_status(:not_found)
+        expect(other.folders.count).to eq(0)
+      end
+    end
+
+    describe "DELETE /api/terms/:id/suggested_folder（提案の却下）" do
+      it "提案が消え、フォルダは作られない" do
+        term = create(:term, user: owner, suggested_folder_name: "Web・HTTP")
+
+        delete "/api/terms/#{term.id}/suggested_folder"
+
+        expect(response).to have_http_status(:ok)
+        expect(term.reload.suggested_folder_name).to be_nil
+        expect(owner.folders.count).to eq(0)
+      end
+    end
+
+    describe "GET /api/terms?folder_id=" do
+      # 【own_term（"冪等性"）が最初から未分類で存在する】
+      #   ファイル冒頭の let! で作られている。
+      #   フォルダに入れた単語と対比する材料としてそのまま使う。
+
+      it "指定したフォルダの単語だけが返る" do
+        folder = owner.folders.create!(name: "Web・HTTP")
+        create(:term, user: owner, word: "CORS", folder: folder)
+
+        get "/api/terms", params: { folder_id: folder.id }
+
+        expect(json_body[:terms].map { |t| t[:word] }).to eq([ "CORS" ])
+      end
+
+      it "unfiled を指定すると未分類だけが返る" do
+        folder = owner.folders.create!(name: "Web・HTTP")
+        create(:term, user: owner, word: "CORS", folder: folder)
+
+        get "/api/terms", params: { folder_id: "unfiled" }
+
+        words = json_body[:terms].map { |t| t[:word] }
+        expect(words).to include("冪等性")
+        expect(words).not_to include("CORS")
+      end
+    end
+  end
 end

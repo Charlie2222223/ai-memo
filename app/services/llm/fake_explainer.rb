@@ -35,12 +35,12 @@ module Llm
       @calls = []
     end
 
-    def call(word:, context: nil)
+    def call(word:, context: nil, folders: [])
       # 何を渡されたかを記録しておく。
       # 【何に使うか】テストで
-      #   「context がちゃんとAIに渡されているか」を検証できる。
+      #   「context や folders がちゃんとAIに渡されているか」を検証できる。
       #   渡し忘れは画面上は分からないので、ここで担保する。
-      @calls << { word: word, context: context }
+      @calls << { word: word, context: context, folders: folders }
 
       sleep(@delay) if @delay.positive?
 
@@ -54,7 +54,17 @@ module Llm
           "「#{word}」の例文2"
         ],
         usage_note: "「#{word}」のテスト用の使い方です。",
-        suggested_tags: [ "テスト" ]
+        suggested_tags: [ "テスト" ],
+        # --------------------------------------------------------------------
+        # 【本物の振る舞いを模す】
+        #   既存フォルダがあれば、その先頭を選んだことにする（＝既存に一致）。
+        #   無ければ新しい名前を提案したことにする（＝未承認の提案）。
+        #
+        #   この2分岐がフォルダ機能の本質なので、Fakeが片方しか
+        #   再現できないと、もう片方の経路がテストされないまま残る。
+        #   「Fakeは本物と同じ形・同じ分岐を返す」が原則。
+        # --------------------------------------------------------------------
+        folder: folders.presence&.first || "テスト分類"
       )
 
       # 【Usage も本物と同じ形で返す理由】

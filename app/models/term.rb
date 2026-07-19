@@ -36,6 +36,16 @@ class Term < ApplicationRecord
   has_many :term_tags, dependent: :destroy
   has_many :tags, through: :term_tags
 
+  # --------------------------------------------------------------------------
+  # 所属フォルダ
+  # --------------------------------------------------------------------------
+  # 【optional: true が必要な理由】
+  #   belongs_to は Rails 5 以降、既定で必須（nilを許さない）。
+  #   このアプリはフォルダが空の状態から始まる仕様なので、
+  #   最初の単語はどこにも所属しない。
+  #   optional を書かないと、1件目の登録が検証で落ちる。
+  belongs_to :folder, optional: true
+
   # AI呼び出しの記録。
   # 【dependent を付けない理由】
   #   マイグレーションで on_delete: :nullify を指定したので、
@@ -93,6 +103,25 @@ class Term < ApplicationRecord
             uniqueness: { scope: :user_id, message: "はすでに登録されています" }
 
   validates :context, length: { maximum: 500 }
+
+  # --------------------------------------------------------------------------
+  # フォルダの持ち主が自分と同じか
+  # --------------------------------------------------------------------------
+  # 【なぜこの検証が必須か】← 権限の穴になりうる箇所
+  #   folder_id は利用者が変更できる必要がある（単語を別のフォルダへ移す）。
+  #   そのため Strong Parameters で許可せざるを得ない。
+  #
+  #   しかし許可した以上、他人のフォルダのIDを送りつけられる。
+  #   何もしなければ、自分の単語を他人のフォルダに所属させられてしまい、
+  #   そのフォルダを開いた他人の画面に自分の単語が現れる。
+  #
+  #   コントローラ側で毎回チェックする方法もあるが、
+  #   経路が増えるたびに書き忘れる。
+  #   モデルに置けば、どの経路から保存しても必ず通る。
+  #
+  #   「権限チェックはif文で書くのではなく、構造的に通らなくする」
+  #   という方針（current_user.terms から辿るのと同じ考え方）。
+  validate :folder_must_belong_to_same_user
 
   # ==========================================================================
   # スコープ（よく使う検索条件に名前を付けたもの）
@@ -164,6 +193,26 @@ class Term < ApplicationRecord
     joins(:tags).where(tags: { name: tag_name }).distinct
   }
 
+  # --------------------------------------------------------------------------
+  # フォルダでの絞り込み
+  # --------------------------------------------------------------------------
+  # 【タグの絞り込みと違い JOIN が要らない理由】
+  #   フォルダは1対多なので、terms 側に folder_id を持っている。
+  #   JOINも distinct も不要で、単純な WHERE で済む。
+  #   多対多（タグ）との実装量の差がそのまま、
+  #   「排他的な分類」を選んだ利点になっている。
+  #
+  # 【"unfiled" という特別な値】
+  #   未分類だけを見たい、という要求は必ず出る。
+  #   folder_id に nil を渡す方式だと「指定なし（全件）」と
+  #   区別が付かないため、専用の文字列で表す。
+  scope :in_folder, ->(folder_id) {
+    next all if folder_id.blank?
+    next where(folder_id: nil) if folder_id.to_s == "unfiled"
+
+    where(folder_id: folder_id)
+  }
+
   # ==========================================================================
   # インスタンスメソッド
   # ==========================================================================
@@ -218,5 +267,63 @@ class Term < ApplicationRecord
   #   どちらの結果が最終的に残るかも不定になる。
   def regeneratable?
     completed? || failed?
+  end
+
+  # --------------------------------------------------------------------------
+  # AIの分類結果を反映する
+  # --------------------------------------------------------------------------
+  # 【2つに分岐する理由】
+  #   既存のフォルダに当てはまるなら黙って入れる。
+  #   当てはまらないなら「提案」として置くだけで、勝手にフォルダを作らない。
+  #
+  #   勝手に作ると、フォルダが際限なく増えてタグと同じ末路をたどる。
+  #   フォルダの価値は「少なくて安定していること」なので、
+  #   増やす判断は必ず人間が行う。
+  #
+  # 【まとめて1メソッドにする理由】
+  #   apply_explanation! と同じ。呼び出し側で
+  #   「folder を入れる」「suggested を消す」を別々に書くと必ず片方を忘れ、
+  #   確定済みなのに提案が残り続ける、といった状態が生まれる。
+  def apply_folder_suggestion!(name)
+    return if name.blank?
+
+    existing = Folder.find_by_name_for(user, name)
+
+    if existing
+      # 既存に当てはまった → 確定。提案は残さない
+      update!(folder: existing, suggested_folder_name: nil)
+    else
+      # 当てはまらない → 提案として保持。所属は未分類のまま
+      update!(suggested_folder_name: name.to_s.strip)
+    end
+  end
+
+  # --------------------------------------------------------------------------
+  # AIの提案を承認して、実際にフォルダを作る
+  # --------------------------------------------------------------------------
+  # 【トランザクションで囲む理由】
+  #   フォルダの作成と、単語の所属変更は必ずセットで成立させたい。
+  #   途中で失敗すると「フォルダはできたが空のまま、
+  #   単語は未分類で提案も消えた」という宙ぶらりんの状態が残る。
+  def accept_suggested_folder!
+    return if suggested_folder_name.blank?
+
+    transaction do
+      folder = Folder.find_or_create_for(user, suggested_folder_name)
+      update!(folder: folder, suggested_folder_name: nil)
+    end
+  end
+
+  private
+
+  def folder_must_belong_to_same_user
+    return if folder.nil?
+    return if folder.user_id == user_id
+
+    # 【メッセージを具体的にしない理由】
+    #   「そのフォルダは他人のものです」と返すと、
+    #   指定したIDが実在することを教えてしまう。
+    #   他人のリソースに404を返すのと同じ考え方。
+    errors.add(:folder, "が正しくありません")
   end
 end

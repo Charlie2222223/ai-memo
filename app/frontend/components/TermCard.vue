@@ -8,8 +8,10 @@
   ============================================================================
 -->
 <script setup>
+import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useTermsStore } from '../stores/terms'
+import { useFoldersStore } from '../stores/folders'
 
 // 【defineProps とは】親コンポーネントから受け取る値の宣言。
 //   <TermCard :term="t" /> のように渡される。
@@ -25,7 +27,14 @@ const props = defineProps({
 })
 
 const store = useTermsStore()
+const folders = useFoldersStore()
 const router = useRouter()
+
+// 【処理中フラグを持つ理由】
+//   承認は「フォルダ作成 → 所属変更 → 一覧の取り直し」で1秒弱かかる。
+//   その間ボタンを押せたままだと、連打で同じフォルダを2回作ろうとして
+//   2回目が重複エラーになる。押した瞬間に無効化する。
+const busy = ref(false)
 
 const statusLabel = {
   pending: '生成中…',
@@ -38,6 +47,42 @@ async function handleRegenerate() {
     await store.regenerateTerm(props.term.id)
   } catch (e) {
     alert(e.message)
+  }
+}
+
+// ----------------------------------------------------------------------------
+// AIが提案したフォルダの承認・却下
+// ----------------------------------------------------------------------------
+// 【承認したらフォルダ一覧も取り直す理由】
+//   承認は新しいフォルダを1つ作る操作。
+//   単語側だけ更新すると、サイドバーに新しいフォルダが現れず
+//   「承認したのに反映されない」ように見える。
+//
+//   未分類の件数と提案の件数も同時に減るので、いずれにせよ取り直しが要る。
+async function handleAcceptFolder() {
+  busy.value = true
+  try {
+    await store.acceptFolder(props.term.id)
+    await folders.fetchFolders()
+  } catch (e) {
+    alert(e.message)
+  } finally {
+    busy.value = false
+  }
+}
+
+// 【却下でも取り直す理由】
+//   フォルダは増えないが、提案の件数（サイドバーの「提案 N」）が減る。
+//   これが減らないと、対応済みなのに未対応に見え続ける。
+async function handleRejectFolder() {
+  busy.value = true
+  try {
+    await store.rejectFolder(props.term.id)
+    await folders.fetchFolders()
+  } catch (e) {
+    alert(e.message)
+  } finally {
+    busy.value = false
   }
 }
 
@@ -159,7 +204,36 @@ async function handleDelete() {
            一続きの文字列に見えていた。
            親に gap を置けば縦横どちらも均等になる。 -->
     <div v-if="term.tags?.length" class="tag-list" style="margin-top: var(--space-4)">
+      <!-- 【フォルダをタグと並べて出す理由】
+           どちらも「この単語がどこに属するか」の情報なので、
+           離れた場所にあると関係が読み取れない。
+           フォルダは1つだけなので先頭に置き、色で区別する。 -->
+      <span v-if="term.folder_name" class="tag" style="border-color: var(--accent); color: var(--accent)">
+        {{ term.folder_name }}
+      </span>
       <span v-for="tag in term.tags" :key="tag.id" class="tag">{{ tag.name }}</span>
+    </div>
+
+    <!-- ======================================================================
+         AIの分類提案（未承認のときだけ出る）
+         ======================================================================
+         【詳細画面だけに出す理由】
+           承認は「新しいフォルダを作る」という結果を伴う判断。
+           一覧の行に出すと、探している最中に判断を迫られて
+           本来の目的（探す）が中断される。
+           開いて読んでいるときなら、その単語について考えている最中なので
+           分類の判断もしやすい。 -->
+    <div v-if="detailed && term.suggested_folder_name" class="suggestion-box">
+      <span class="grow">
+        AIの提案: <strong>{{ term.suggested_folder_name }}</strong>
+      </span>
+
+      <button class="primary" :disabled="busy" @click="handleAcceptFolder">
+        このフォルダを作る
+      </button>
+      <button class="ghost" :disabled="busy" @click="handleRejectFolder">
+        いらない
+      </button>
     </div>
 
     <!-- ======================================================================

@@ -125,6 +125,24 @@ export const api = {
   deleteTerm: (id) => request('DELETE', `/api/terms/${id}`),
   regenerateTerm: (id) => request('POST', `/api/terms/${id}/regenerate`),
 
+  // 単語を別のフォルダへ移す（null を渡すと未分類に戻る）
+  moveTerm: (id, folderId) =>
+    request('PATCH', `/api/terms/${id}`, { term: { folder_id: folderId } }),
+
+  // --- AIが提案したフォルダ ---
+  // 【承認が専用のURLになっている理由】
+  //   「フォルダを作る → 単語を入れる → 提案を消す」の3段階を
+  //   サーバー側で1つのトランザクションにまとめている。
+  //   画面から2往復すると、途中で失敗したとき空のフォルダが残る。
+  acceptFolder: (id) => request('POST', `/api/terms/${id}/accept_folder`),
+  rejectFolder: (id) => request('DELETE', `/api/terms/${id}/suggested_folder`),
+
+  // --- フォルダ ---
+  listFolders: () => request('GET', '/api/folders'),
+  createFolder: (name) => request('POST', '/api/folders', { folder: { name } }),
+  renameFolder: (id, name) => request('PATCH', `/api/folders/${id}`, { folder: { name } }),
+  deleteFolder: (id) => request('DELETE', `/api/folders/${id}`),
+
   // --- タグ ---
   listTags: () => request('GET', '/api/tags'),
 }

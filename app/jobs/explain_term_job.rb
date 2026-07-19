@@ -125,7 +125,19 @@ class ExplainTermJob < ApplicationJob
       # ----------------------------------------------------------------------
       # AIを呼ぶ（本番は ClaudeExplainer、テストは FakeExplainer）
       # ----------------------------------------------------------------------
-      explanation, usage = explainer.call(word: term.word, context: term.context)
+      # 【フォルダ一覧を毎回渡す理由】
+      #   AIは前回の呼び出しを覚えていない。
+      #   「どんな置き場所が既にあるか」を知らないと、
+      #   毎回新しい分類名を発明してしまい、フォルダが際限なく増える。
+      #
+      #   pluck を使うのは、名前しか要らないため。
+      #   folders.map(&:name) だとレコード全体を組み立てるが、
+      #   pluck は SELECT name だけを発行してその配列を返す。
+      explanation, usage = explainer.call(
+        word: term.word,
+        context: term.context,
+        folders: term.user.folders.alphabetical.pluck(:name)
+      )
 
       # ----------------------------------------------------------------------
       # 結果を保存する（1つのトランザクションにまとめる）
@@ -151,6 +163,8 @@ class ExplainTermJob < ApplicationJob
         )
 
         attach_tags(term, explanation.suggested_tags)
+
+        assign_folder(term, explanation.folder)
 
         record_success(term, usage)
       end
@@ -228,6 +242,30 @@ class ExplainTermJob < ApplicationJob
   end
 
   # ==========================================================================
+  # AIが選んだフォルダを反映する
+  # ==========================================================================
+  # 【2つの結果に分かれる】
+  #   既存フォルダに一致 → その場で所属を確定（利用者の操作は不要）
+  #   一致しない        → 提案として保持。所属は未分類のまま
+  #
+  #   判定と保存の中身は Term#apply_folder_suggestion! にある。
+  #   ジョブ側は「呼ぶ」だけにして、判断のルールはモデルに置く。
+  #
+  # 【勝手に新しいフォルダを作らない理由】
+  #   作ってしまうと、フォルダが単語のたびに増えてタグと同じ末路になる。
+  #   フォルダの価値は「少なくて安定していること」なので、
+  #   増やす判断は人間が行う。
+  def assign_folder(term, folder_name)
+    term.apply_folder_suggestion!(folder_name)
+  rescue ActiveRecord::RecordInvalid => e
+    # 【分類の失敗で全体を失敗させない】
+    #   タグと同じ考え方。分類は補助的な機能であり、
+    #   これに失敗したからといって、生成できた解説まで
+    #   捨てるのは損失（1件3.4円）が大きい。
+    Rails.logger.warn("[ExplainTermJob] フォルダの割り当てに失敗 term_id=#{term.id}: #{e.message}")
+  end
+
+  # ==========================================================================
   # API呼び出しの記録（成功）
   # ==========================================================================
   def record_success(term, usage)
@@ -297,23 +335,22 @@ class ExplainTermJob < ApplicationJob
     #   config/cable.yml の development を async から redis に変えたのは、
     #   まさにこのため。async のままだとここで送っても誰にも届かない。
     # ------------------------------------------------------------------------
+    # 【TermSerializer に集約している理由】
+    #   以前はここに変換処理を直接書いていたが、
+    #   TermsController にも同じものがあり、二重管理になっていた。
+    #   カラムを足したときに片方だけ直すと、
+    #   「リロードすれば見えるのに自動更新では反映されない」という
+    #   切り分けの難しい不具合になる。
+    #
+    # 【reload している理由】
+    #   直前のトランザクションでタグとフォルダを付け替えている。
+    #   関連はメモリ上にキャッシュされるため、読み直さないと
+    #   付け替える前の内容を送ってしまう。
     TermsChannel.broadcast_to(
       term.user,
       {
         type: "term_updated",
-        term: {
-          id: term.id,
-          word: term.word,
-          context: term.context,
-          meaning: term.meaning,
-          examples: term.examples,
-          usage_note: term.usage_note,
-          status: term.status,
-          error_message: term.error_message,
-          generated_at: term.generated_at&.iso8601,
-          created_at: term.created_at.iso8601,
-          tags: term.tags.reload.map { |t| { id: t.id, name: t.name } }
-        }
+        term: TermSerializer.call(term.reload)
       }
     )
   rescue StandardError => e

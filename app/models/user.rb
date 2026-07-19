@@ -139,4 +139,14 @@ class User < ApplicationRecord
 
   # ユーザーが作ったタグ。
   has_many :tags, dependent: :destroy
+
+  # ユーザーが作ったフォルダ。
+  # 【dependent: :destroy でよい理由】
+  #   ユーザー本体を消すなら、そのフォルダも消えて構わない。
+  #   中の単語も has_many :terms, dependent: :destroy で一緒に消える。
+  #
+  #   なお「フォルダだけを消す」場合は話が別で、
+  #   単語は残さなければならない。それは Folder 側の
+  #   has_many :terms, dependent: :nullify が担当している。
+  has_many :folders, dependent: :destroy
 end

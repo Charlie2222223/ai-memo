@@ -26,12 +26,14 @@ import { useRouter, useRoute } from 'vue-router'
 import { useSessionStore } from './stores/session'
 import { useTermsStore } from './stores/terms'
 import { useToastsStore } from './stores/toasts'
+import { useFoldersStore } from './stores/folders'
 import { subscribeToTerms } from './lib/cable'
 import TermSidebar from './components/TermSidebar.vue'
 
 const session = useSessionStore()
 const termsStore = useTermsStore()
 const toasts = useToastsStore()
+const folders = useFoldersStore()
 const router = useRouter()
 const route = useRoute()
 
@@ -133,8 +135,29 @@ function startCable() {
     const justCompleted = before?.status === 'pending' && updatedTerm.status === 'completed'
     const isOpen = route.params.id === String(updatedTerm.id)
 
-    if (justCompleted && !isOpen) {
-      toasts.show(`「${updatedTerm.word}」の解説ができました`)
+    if (justCompleted) {
+      // 【フォルダの件数を取り直す理由】
+      //   生成が終わると、その単語は未分類から特定のフォルダへ移るか、
+      //   提案が付いて「提案 N」の数が増える。
+      //   取り直さないと、サイドバーの数字が古いまま残る。
+      folders.fetchFolders()
+
+      // ----------------------------------------------------------------
+      // 【自動でフォルダに入れた場合に通知する】
+      //   既存フォルダに当てはまった単語は、利用者に何も聞かずに
+      //   そこへ入る。黙って入れるのは手間を消すためだが、
+      //   どこへ入ったか分からないままだと後で探せなくなる。
+      //
+      //   「勝手にやったこと」は、邪魔しない形で伝える。
+      //   これが自動化を信用してもらうための最低条件。
+      // ----------------------------------------------------------------
+      if (updatedTerm.folder_name) {
+        toasts.show(`「${updatedTerm.word}」を ${updatedTerm.folder_name} に入れました`)
+      } else if (!isOpen) {
+        // フォルダに入らなかった場合は、完了だけ伝える。
+        // 開いている単語なら本文が目の前で変わるので、通知は重複になる。
+        toasts.show(`「${updatedTerm.word}」の解説ができました`)
+      }
     }
   })
 }

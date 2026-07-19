@@ -26,11 +26,20 @@ export const useTermsStore = defineStore('terms', () => {
   // --------------------------------------------------------------------------
   // 一覧を取得する
   // --------------------------------------------------------------------------
-  async function fetchTerms() {
+  // 【folderId を引数で受け取る理由】
+  //   フォルダの選択状態は folders ストアが持っている。
+  //   ここから直接そちらを参照すると、2つのストアが相互に依存し、
+  //   どちらが先に初期化されるかで挙動が変わる。
+  //   呼び出し側（画面）が値を渡す形にすれば依存は一方向で済む。
+  async function fetchTerms(folderId = '') {
     loading.value = true
     error.value = null
     try {
-      const data = await api.listTerms({ q: query.value, tag: selectedTag.value })
+      const data = await api.listTerms({
+        q: query.value,
+        tag: selectedTag.value,
+        folder_id: folderId,
+      })
       terms.value = data.terms
     } catch (e) {
       error.value = e.message
@@ -87,6 +96,32 @@ export const useTermsStore = defineStore('terms', () => {
   }
 
   // --------------------------------------------------------------------------
+  // AIが提案したフォルダを承認する / 却下する
+  // --------------------------------------------------------------------------
+  // 【戻り値の term をそのまま applyUpdate に渡す理由】
+  //   サーバーは操作後の単語を返してくる。
+  //   手元で「suggested を消して folder を入れる」と書き換えると、
+  //   サーバーの判断（既存フォルダに吸収された等）とずれる可能性がある。
+  //   常にサーバーが返した状態を正とする。
+  async function acceptFolder(id) {
+    const data = await api.acceptFolder(id)
+    applyUpdate(data.term)
+    return data.term
+  }
+
+  async function rejectFolder(id) {
+    const data = await api.rejectFolder(id)
+    applyUpdate(data.term)
+    return data.term
+  }
+
+  async function moveTerm(id, folderId) {
+    const data = await api.moveTerm(id, folderId)
+    applyUpdate(data.term)
+    return data.term
+  }
+
+  // --------------------------------------------------------------------------
   // WebSocketで届いた更新を反映する
   // --------------------------------------------------------------------------
   // 【この関数が非同期処理の締めくくり】
@@ -116,5 +151,6 @@ export const useTermsStore = defineStore('terms', () => {
   return {
     terms, tags, loading, error, query, selectedTag,
     fetchTerms, fetchTags, createTerm, deleteTerm, regenerateTerm, applyUpdate,
+    acceptFolder, rejectFolder, moveTerm,
   }
 })

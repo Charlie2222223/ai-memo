@@ -39,10 +39,13 @@ module Llm
     #
     # @param word    [String] 解説対象の単語
     # @param context [String, nil] どこで見たかのメモ（任意）
+    # @param folders [Array<String>] 既存フォルダ名の一覧。
+    #   AIはこの中から選ぶか、どれにも当てはまらなければ新しい名前を提案する。
+    #   空配列なら「まだフォルダが無い」＝必ず新規提案になる。
     # @return [Array(Llm::Explanation, Llm::Usage)] 生成結果と計測値
     # @raise [Llm::Client::Error] 生成に失敗した場合
     # --------------------------------------------------------------------------
-    def call(word:, context: nil)
+    def call(word:, context: nil, folders: [])
       # 【NotImplementedError を投げる意味】
       #   このクラスを直接使おうとしたら、その場で気付ける。
       #   継承したのにメソッドを書き忘れた場合も、

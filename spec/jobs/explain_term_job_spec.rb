@@ -83,7 +83,68 @@ RSpec.describe ExplainTermJob, type: :job do
 
       described_class.perform_now(term.id)
 
-      expect(fake.calls.first).to eq({ word: "冪等性", context: "API設計の記事で見た" })
+      # 【eq ではなく include を使う理由】
+      #   eq はハッシュの完全一致を求めるため、AIに渡す情報を1つ足すたびに
+      #   このテストが壊れる（実際 folders を足したときに壊れた）。
+      #
+      #   ここで確かめたいのは「context が渡っていること」だけ。
+      #   include なら、他のキーが増えても意図した検証は生き続ける。
+      expect(fake.calls.first).to include(word: "冪等性", context: "API設計の記事で見た")
+    end
+
+    it "既存フォルダの一覧がAIに渡される" do
+      # ----------------------------------------------------------------------
+      # 【なぜこれを確認するか】
+      #   フォルダ一覧を渡し忘れても、AIは何らかの分類名を返すので
+      #   画面上は「動いている」ように見える。
+      #
+      #   しかし既存を知らないAIは毎回新しい名前を発明するため、
+      #   フォルダが単語の数だけ増え続ける。
+      #   タグと同じ理由でナビゲーションとして破綻する。
+      #
+      #   壊れても気付けない類の不具合なので、テストで固定する。
+      # ----------------------------------------------------------------------
+      user.folders.create!(name: "Web・HTTP")
+      user.folders.create!(name: "設計")
+
+      fake = Llm::FakeExplainer.new
+      allow(Llm::Explainer).to receive(:build).and_return(fake)
+
+      described_class.perform_now(term.id)
+
+      expect(fake.calls.first[:folders]).to contain_exactly("Web・HTTP", "設計")
+    end
+  end
+
+  # ==========================================================================
+  # フォルダの自動振り分け
+  # ==========================================================================
+  # 【この2つの分岐がフォルダ機能の本質】
+  #   既存に当てはまれば黙って入れ、当てはまらなければ提案に留める。
+  #   後者で勝手にフォルダを作ってしまうと、フォルダが際限なく増えて
+  #   タグと同じ末路をたどる。
+  describe "フォルダの割り当て" do
+    # user / term はファイル冒頭の let をそのまま使う（既定で status: pending）。
+
+    it "既存フォルダに当てはまるときは、そのフォルダに入り提案は残らない" do
+      folder = user.folders.create!(name: "Web・HTTP")
+
+      # FakeExplainer は「既存があればその先頭を選ぶ」振る舞いをする。
+      described_class.perform_now(term.id)
+
+      term.reload
+      expect(term.folder).to eq(folder)
+      expect(term.suggested_folder_name).to be_nil
+    end
+
+    it "既存フォルダが無いときは提案として保持し、勝手にフォルダを作らない" do
+      described_class.perform_now(term.id)
+
+      term.reload
+      expect(term.folder).to be_nil
+      expect(term.suggested_folder_name).to be_present
+      # 【ここが最重要】提案の段階でフォルダを作ってはいけない。
+      expect(user.folders.count).to eq(0)
     end
   end
 
