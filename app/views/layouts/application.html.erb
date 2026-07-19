@@ -1,0 +1,123 @@
+<%#
+  ============================================================================
+  application.html.erb — 全ページ共通の外枠
+
+  【レイアウトとは】
+    どのページでも同じ部分（<html>, <head>, 共通のCSS読み込みなど）を
+    1箇所にまとめたテンプレート。
+    各ページ固有の中身は yield の位置に差し込まれる。
+
+  【SPAではこのファイルが特に重要】
+    このアプリの画面はすべてVueが描くので、Railsが返すHTMLは
+    実質このファイル1枚だけ。Vueを起動するための土台になる。
+  ============================================================================
+%>
+<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <%# 文字コード。日本語が文字化けしないために必須 %>
+    <meta charset="utf-8">
+
+    <title><%= content_for(:title) || "単語メモ" %></title>
+
+    <%#
+      【viewport の指定】スマホ表示に必須。
+        width=device-width  … 画面の実際の幅を基準にする
+        initial-scale=1     … 初期倍率を等倍にする
+
+      これが無いと、スマホは「PC用の幅980pxのページ」と仮定して
+      全体を縮小表示するため、文字が極端に小さくなって読めない。
+      Q5で「スマホから見返す」を要件にしたので、この1行は外せない。
+    %>
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+
+    <%# スマホのホーム画面に追加したときアプリらしく表示させる指定 %>
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="application-name" content="単語メモ">
+
+    <%#
+      ==========================================================================
+      【csrf_meta_tags — SPAにとって極めて重要】
+      ==========================================================================
+      次のような meta タグを出力する:
+
+        <meta name="csrf-param" content="authenticity_token">
+        <meta name="csrf-token" content="ランダムな長い文字列">
+
+      【なぜ必要か】
+        ApplicationController で protect_from_forgery を有効にしたため、
+        POST/PATCH/DELETE には正しいトークンが必要になる。
+
+        通常のRailsのフォームなら form_with が自動でトークンを埋め込むが、
+        Vueから fetch() で送る場合は誰も入れてくれない。
+        そのままではログインすら 422 エラーで弾かれる。
+
+        そこでこのmetaタグからJavaScriptがトークンを読み取り、
+        リクエストヘッダ X-CSRF-Token に付けて送る（段階6で実装）。
+
+      【なぜこれが攻撃者に破られないのか】
+        攻撃者のサイト（別オリジン）からは、
+        同一オリジンポリシーによりこのHTMLの中身を読めない。
+        → トークンの値を知る手段が無い
+        → トークン付きのリクエストを作れない
+
+        Cookieは「送らせる」ことはできても「読む」ことはできない。
+        この非対称性がCSRF対策の核心になっている。
+      ==========================================================================
+    %>
+    <%= csrf_meta_tags %>
+
+    <%#
+      Content Security Policy（読み込んでよいスクリプトの制限）用のタグ。
+      XSS対策の一つで、許可していない場所のJavaScriptの実行を防ぐ。
+    %>
+    <%= csp_meta_tag %>
+
+    <%# 各ページから head に追加したいものがあればここに入る %>
+    <%= yield :head %>
+
+    <link rel="icon" href="/icon.svg" type="image/svg+xml">
+    <link rel="apple-touch-icon" href="/icon.png">
+
+    <%# app/assets/stylesheets の中身を読み込む %>
+    <%= stylesheet_link_tag :app %>
+
+    <%#
+      【段階6で、ここにViteのタグが入る】
+        vite_client_tag                  … 開発中の即時反映（HMR）用
+        vite_javascript_tag "application" … Vueアプリ本体
+
+      現時点ではViteをまだ導入していないので、
+      pages/index.html.erb に置いた仮の画面がそのまま表示される。
+    %>
+    <%#
+      ==========================================================================
+      【Vite のタグ — Vueアプリの読み込み】
+      ==========================================================================
+      vite_client_tag
+        開発中だけ出力される。Viteの開発サーバーへWebSocketで繋ぎ、
+        コードを保存した瞬間に画面へ反映する（HMR）。
+        本番では何も出力されない。
+
+      vite_javascript_tag 'application'
+        app/frontend/entrypoints/application.js を読み込む。
+        そこからVue本体・ルーター・各画面が芋づる式に読み込まれる。
+
+      【開発と本番で参照先が変わる】
+        開発 … Viteの開発サーバー（localhost:3036）から都度取得
+        本番 … ビルド済みのファイル（public/vite/）を配信
+        この切り替えは vite_rails が自動で行うので、
+        このタグ自体は書き換え不要。
+      ==========================================================================
+    %>
+    <%= vite_client_tag %>
+    <%= vite_javascript_tag 'application' %>
+
+
+  </head>
+
+  <body>
+    <%= yield %>
+  </body>
+</html>
