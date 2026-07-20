@@ -40,6 +40,14 @@ class TermSerializer
     {
       id: term.id,
       word: term.word,
+
+      # 読み方と正式名称。該当しない語では nil。
+      # 【画面側で v-if するだけで済むよう nil に寄せてある】
+      #   Llm::Explanation.from_api で空文字を nil に変換している。
+      #   「無い」の表現が2種類あると、判定の書き方によって挙動が揺れる。
+      reading: term.reading,
+      full_form: term.full_form,
+
       context: term.context,
       meaning: term.meaning,
       examples: term.examples,

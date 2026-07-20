@@ -43,6 +43,8 @@ module Llm
   #     ・キーワード引数で作るので、引数の順序を間違えない
   #   という点で、値オブジェクトにはこちらが適している。
   Explanation = Data.define(
+    :reading,        # String … 読み方（該当しなければ空文字）
+    :full_form,      # String … 正式名称・英語表記（該当しなければ空文字）
     :meaning,        # String … 単語の意味
     :examples,       # Array  … 例文の配列
     :usage_note,     # String … 使い方・使う場面
@@ -64,6 +66,19 @@ module Llm
     #   検証の場所を1箇所に集約するのが目的。
     def self.from_api(hash)
       new(
+        # 【presence を通して nil に寄せる理由】
+        #   該当しない語では空文字が返る。
+        #   空文字のまま保存すると、画面側で
+        #     v-if="term.reading"   … 空文字は偽なので出ない（意図どおり）
+        #     term.reading.length   … 0
+        #   と、判定によって挙動が揺れる。
+        #   「無い」を nil の1種類に統一しておく方が扱いを間違えない。
+        #
+        # 【truncate している理由】
+        #   カラムは string（255文字）。AIが長い説明文を返した場合に
+        #   保存で落ちると、解説本体まで巻き添えで失敗する。
+        reading: hash["reading"].to_s.strip.truncate(100).presence,
+        full_form: hash["full_form"].to_s.strip.truncate(200).presence,
         meaning: hash["meaning"].to_s,
         # 【Array() の意味】nil なら []、配列ならそのまま、
         #   単一の値なら1要素の配列にする。

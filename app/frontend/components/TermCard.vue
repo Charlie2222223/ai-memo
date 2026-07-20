@@ -118,6 +118,25 @@ async function handleDelete() {
       </span>
     </div>
 
+    <!-- ======================================================================
+         読み方と正式名称
+         ======================================================================
+         【見出しのすぐ下に置く理由】
+           「この単語は何と読むか」は、意味を読む前に知りたい情報。
+           解説の後ろに置くと、読み終わってから戻ることになる。
+
+         【どちらか片方しか無い場合がある】
+           「プリフライト」… 読み方は不要、英語表記はある
+           「設計」        … 読み方は不要、略語でもない
+           両方を1つの行にまとめ、あるものだけを出す。 -->
+    <p v-if="term.reading || term.full_form" class="term-reading">
+      <span v-if="term.reading">{{ term.reading }}</span>
+      <!-- 【区切りを条件付きにする理由】
+           片方しか無いときに「/」だけが浮くのを防ぐ。 -->
+      <span v-if="term.reading && term.full_form" class="term-reading-sep">/</span>
+      <span v-if="term.full_form">{{ term.full_form }}</span>
+    </p>
+
     <p v-if="term.context" class="muted" style="margin: 0 0 var(--space-2)">
       文脈: {{ term.context }}
     </p>

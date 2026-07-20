@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_07_19_133820) do
+ActiveRecord::Schema[8.1].define(version: 2026_07_20_062001) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -66,8 +66,10 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_19_133820) do
     t.text "error_message"
     t.jsonb "examples", default: [], null: false
     t.bigint "folder_id"
+    t.string "full_form"
     t.datetime "generated_at"
     t.text "meaning"
+    t.string "reading"
     t.bigint "source_term_id"
     t.integer "status", default: 0, null: false
     t.string "suggested_folder_name"

@@ -157,6 +157,8 @@ class ExplainTermJob < ApplicationJob
       #   中途半端な状態がDBに残らないことが保証される。
       Term.transaction do
         term.apply_explanation!(
+          reading: explanation.reading,
+          full_form: explanation.full_form,
           meaning: explanation.meaning,
           examples: explanation.examples,
           usage_note: explanation.usage_note

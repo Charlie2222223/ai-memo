@@ -249,4 +249,46 @@ RSpec.describe ExplainTermJob, type: :job do
       expect(completed.reload.meaning).to eq(original_meaning)
     end
   end
+
+  # ==========================================================================
+  # 読み方と正式名称（v2で追加）
+  # ==========================================================================
+  describe "読み方と正式名称" do
+    it "AIが返した読み方と正式名称が保存される" do
+      # ----------------------------------------------------------------------
+      # 【なぜテストするか】
+      #   保存経路が抜けていても、解説本体は正常に表示される。
+      #   「読み方だけ空のまま」は画面を見ても異常に見えないので、
+      #   気付かないまま放置されうる。
+      # ----------------------------------------------------------------------
+      described_class.perform_now(term.id)
+
+      term.reload
+      expect(term.reading).to be_present
+      expect(term.full_form).to be_present
+    end
+
+    it "空文字で返ってきた場合は nil になる" do
+      # ----------------------------------------------------------------------
+      # 【なぜ nil に寄せるか】
+      #   「プリフライト」のように読み方が不要な語では空文字が返る。
+      #   空文字と nil が混在すると、画面側の判定によって
+      #   空の行が出たり出なかったりする。「無い」は1種類にする。
+      # ----------------------------------------------------------------------
+      parsed = {
+        "reading" => "",
+        "full_form" => "   ",
+        "meaning" => "意味",
+        "examples" => [ "例" ],
+        "usage_note" => "使い方",
+        "suggested_tags" => [ "テスト" ],
+        "folder" => "テスト分類"
+      }
+
+      explanation = Llm::Explanation.from_api(parsed)
+
+      expect(explanation.reading).to be_nil
+      expect(explanation.full_form).to be_nil
+    end
+  end
 end

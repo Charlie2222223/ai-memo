@@ -48,6 +48,12 @@ module Llm
       raise @raise_error if @raise_error
 
       explanation = Explanation.new(
+        # 【Fakeでも値を入れる理由】
+        #   nil のままだと「読み方が保存される経路」がテストで通らず、
+        #   本番で初めて壊れていることに気付く。
+        #   Fakeは本物と同じ形を返す、が原則。
+        reading: "てすとよみ",
+        full_form: "Test Full Form",
         meaning: "「#{word}」のテスト用の意味です。",
         examples: [
           "「#{word}」の例文1",

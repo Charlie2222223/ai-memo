@@ -16,7 +16,12 @@ module Llm
     #   ここ1行を差し替えるだけで切り替えられる。
     #   さらに api_call_logs に記録される prompt_version も
     #   自動的に追随するので、記録と実態がずれない。
-    PROMPT = Prompts::ExplainTermV1
+    # 【v1 → v2 に切り替えた経緯】
+    #   v2 で reading（読み方）と full_form（正式名称・英語表記）が増えた。
+    #   v1 のファイルは消していない。api_call_logs.prompt_version に
+    #   "explain_term_v1" と記録されたレコードが実在するため、
+    #   そのとき何を投げたのかを後から確認できる状態を保つ。
+    PROMPT = Prompts::ExplainTermV2
 
     # 【引数で client を受け取れるようにしている理由】
     #   テストで「タイムアウトするクライアント」を差し込みたい場合など、

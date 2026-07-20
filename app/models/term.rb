@@ -287,8 +287,14 @@ class Term < ApplicationRecord
   #   成功しているのに画面にエラーが出続ける。
   #
   #   状態が変わるときに必要な更新は、必ず1箇所にまとめる。
-  def apply_explanation!(meaning:, examples:, usage_note:)
+  # 【reading / full_form に既定値を持たせている理由】
+  #   このメソッドは再生成でも呼ばれる。v1 で生成された古い単語を
+  #   再生成せずに他の経路から更新した場合、引数が渡らないことがある。
+  #   既定値 nil を置いておけば、呼び出し側が必ず全部を渡さなくても落ちない。
+  def apply_explanation!(meaning:, examples:, usage_note:, reading: nil, full_form: nil)
     update!(
+      reading: reading,
+      full_form: full_form,
       meaning: meaning,
       examples: examples,
       usage_note: usage_note,
